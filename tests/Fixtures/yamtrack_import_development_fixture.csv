@@ -1,0 +1,34 @@
+media_id,source,media_type,title,image,season_number,episode_number,score,status,notes,start_date,end_date,progress,created_at,progressed_at
+1400,tmdb,tv,Seinfeld,https://image.tmdb.org/t/p/w500/aCw8ONfyz3AhngVQa1E2Ss4KSUQ.jpg,,,,Completed,,2026-07-07 16:44:00+00:00,2026-07-13 00:45:00+00:00,180,2026-07-07 16:41:56.242154+00:00,2026-07-13 00:45:00+00:00
+1400,tmdb,season,Seinfeld,https://image.tmdb.org/t/p/w500/8CcmmI4kdxI3tEzD8OOAXs0vz5.jpg,1,,,Completed,,,,5,2026-07-07 16:41:56.272156+00:00,
+1400,tmdb,season,Seinfeld,https://image.tmdb.org/t/p/w500/s69REAzzJd0G95s4PQZXmfJTAkX.jpg,2,,,Completed,,,,12,2026-07-07 16:42:20.065863+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/v8KULeozyzIJPka2cyLgv3XBja3.jpg,1,1,,,,,,,2026-07-07 16:42:20.046545+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/zPMl6UTCwZVMQZvdXMBKAuYzLQa.jpg,1,2,,,,,,,2026-07-07 16:42:20.046538+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/dbfB7fSqrh41ukwIcxkpZUwMasq.jpg,1,3,,,,,,,2026-07-07 16:42:20.046531+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/aMaKtInc4c0AbPkvQvLVJxe2Ox3.jpg,1,4,,,,,,,2026-07-07 16:42:20.046521+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/2Pgoebr2V0YzgfFVp2toC5aND4E.jpg,1,5,,,,,,,2026-07-07 16:42:20.046500+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/9oK4EcRiiMk8sPymtrQKG4ZMi16.jpg,2,1,,,,,,,2026-07-07 16:42:33.100497+00:00,
+1400,tmdb,episode,Seinfeld,https://image.tmdb.org/t/p/original/sfIZKNBlfF6UgVpw1xT0LyPjhrP.jpg,2,2,,,,,,,2026-07-07 16:42:33.100490+00:00,
+100757,tmdb,tv,Outer Banks,https://image.tmdb.org/t/p/w500/ovDgO2LPfwdVRfvScAqo9aMiIW.jpg,,,,In progress,,,,40,2026-07-07 16:32:35.586161+00:00,
+100757,tmdb,season,Outer Banks,https://image.tmdb.org/t/p/w500/1LVJsegSfZEZr7gdVs5CbyGt5Lk.jpg,1,,,Completed,,,,10,2026-07-07 16:32:35.747496+00:00,
+100757,tmdb,season,Outer Banks,https://image.tmdb.org/t/p/w500/a7x93BIyYiIAe6tAWMSDNK25h0l.jpg,5,,,Planning,,,,0,2026-07-07 16:32:35.747612+00:00,
+100757,tmdb,episode,Outer Banks,https://image.tmdb.org/t/p/original/wRB24gaHLhBK2OA2MNLuOTj12n9.jpg,1,1,,,,,,,2026-07-07 16:32:36.067692+00:00,
+100757,tmdb,episode,Outer Banks,https://image.tmdb.org/t/p/original/xpY8cLmD8a8UVzbmhqwjCPhehDV.jpg,1,2,,,,,,,2026-07-07 16:32:36.067685+00:00,
+100757,tmdb,episode,Outer Banks,https://image.tmdb.org/t/p/original/fq4xfbhnhOCzFea0ZcaTpNmz6N5.jpg,1,3,,,,,,,2026-07-07 16:32:36.067678+00:00,
+100757,tmdb,episode,Outer Banks,https://image.tmdb.org/t/p/original/5fKam7cC2uTPXANpHOHIU7nmiyG.jpg,4,9,,,,,,,2026-07-07 16:32:36.067840+00:00,
+100757,tmdb,episode,Outer Banks,https://image.tmdb.org/t/p/original/4UuD0rhCWsMRynRqr7f34Ho6HHP.jpg,4,10,,,,,,,2026-07-07 16:32:36.067833+00:00,
+121241,tmdb,tv,The Girl from Oslo,https://image.tmdb.org/t/p/w500/xUmmVJam69gM03WtE0jhVYuriy4.jpg,,,,In progress,,,,10,2026-07-07 17:10:21.946775+00:00,
+121241,tmdb,season,The Girl from Oslo,https://image.tmdb.org/t/p/w500/cqrhXOQobnPyX1wrZEJsZ5f1YNG.jpg,1,,,Completed,,,,10,2026-07-07 17:10:31.318953+00:00,
+121241,tmdb,season,The Girl from Oslo,https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-basic-38-picture-grey-c2ebdbb057f2a7614185931650f8cee23fa137b93812ccb132b9df511df1cfac.svg,2,,,Paused,,,,0,2026-07-07 17:10:31.452918+00:00,
+121241,tmdb,episode,The Girl from Oslo,https://image.tmdb.org/t/p/original/rwEax33EIvVqHKOrTOnd3LVyJhb.jpg,1,1,,,,,,,2026-07-07 17:10:31.429044+00:00,
+121241,tmdb,episode,The Girl from Oslo,https://image.tmdb.org/t/p/original/t3ynbrp5D2vitDiLIuK1hBNh6AD.jpg,1,10,,,,,,,2026-07-07 17:10:31.428944+00:00,
+8358,tmdb,tv,Lie to Me,https://image.tmdb.org/t/p/w500/2xpQxwsGYtdGDrmLvCosTZ0I54R.jpg,,,,Dropped,,2026-07-07 17:18:00+00:00,2026-07-07 17:18:00+00:00,8,2026-07-07 17:18:13.564301+00:00,2026-07-07 17:18:00+00:00
+8358,tmdb,season,Lie to Me,https://image.tmdb.org/t/p/w500/5V7c6sa8DVtmR5oBGCSynnLmYeA.jpg,1,,,Dropped,,2026-07-07 17:18:00+00:00,2026-07-07 17:18:00+00:00,8,2026-07-07 17:18:13.588807+00:00,2026-07-07 17:18:00+00:00
+8358,tmdb,season,Lie to Me,https://image.tmdb.org/t/p/w500/g6lLTeQgxMnJcAjQ0EhsmwFAUGJ.jpg,2,,,Dropped,,,,0,2026-07-07 17:19:20.450092+00:00,
+8358,tmdb,episode,Lie to Me,https://image.tmdb.org/t/p/original/seAQRBMFblCEp5MHK8QBHex81Ip.jpg,1,1,,,,,2026-07-07 17:18:00+00:00,,2026-07-07 17:18:29.991606+00:00,
+8358,tmdb,episode,Lie to Me,https://image.tmdb.org/t/p/original/ujVTTvAtD2OgtvtUcnKXXCCFAFB.jpg,1,8,,,,,2026-07-07 17:18:00+00:00,,2026-07-07 17:19:06.418380+00:00,
+202555,tmdb,tv,Daredevil: Born Again,https://image.tmdb.org/t/p/w500/xDUoAsU8lQHOOoRkFiBuarmACDN.jpg,,,,Planning,,,,0,2026-07-07 17:11:27.734311+00:00,
+10009,tmdb,movie,Brother Bear,https://image.tmdb.org/t/p/w500/otptPbEY0vBostmo95xwiiumMJm.jpg,,,,Completed,,,2026-07-07 20:01:00+00:00,1,2026-07-07 19:01:52.777820+00:00,2026-07-07 19:01:52.777852+00:00
+10681,tmdb,movie,WALL·E,https://image.tmdb.org/t/p/w500/hbhFnRzzg6ZDmm8YAmxBnQpQIPh.jpg,,,,Completed,,,2026-07-07 19:47:00+00:00,1,2026-07-07 18:47:29.093270+00:00,2026-07-07 18:47:29.093305+00:00
+969681,tmdb,movie,Spider-Man: Brand New Day,https://image.tmdb.org/t/p/w500/yyB2VJEW3an2xCdcYCPQhn9QERR.jpg,,,,Planning,,,2026-07-07 19:03:00+00:00,1,2026-07-07 18:03:21.423349+00:00,2026-07-07 18:03:21.423382+00:00
+1300607,tmdb,movie,Lucca's World,https://image.tmdb.org/t/p/w500/fX3Q5hxUAUs1k8JQkNTwFpBd6BC.jpg,,,,Planning,,,,0,2026-07-07 18:01:38.622158+00:00,2026-07-07 18:01:38.612918+00:00

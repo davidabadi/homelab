@@ -1,0 +1,36 @@
+# Dependencies / build output are produced inside the image build stages.
+/vendor
+/node_modules
+/public/build
+/public/hot
+
+# Local state that must never leak into the image.
+.env
+.env.*
+!.env.example
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+
+# Locally-generated caches (e.g. bootstrap/cache/packages.php may reference
+# dev-only providers like Pail that don't exist in the --no-dev image).
+/bootstrap/cache/*.php
+
+# VCS / tooling / docs
+.git
+.github
+.gitignore
+.gitattributes
+docs
+tests
+.editorconfig
+.prettierrc
+.prettierignore
+phpstan.neon
+pint.json
+
+# Docker artifacts themselves
+Dockerfile
+.dockerignore
+docker-compose*.yml

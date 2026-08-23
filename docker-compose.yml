@@ -1,0 +1,110 @@
+# Self-hosted TV/Movie tracker stack.
+#
+# Variable substitution (${...}) and the app services' env_file both read the
+# repo-root .env, so it is the single source of configuration. No cloudflared
+# container here — point your existing tunnel at the "web" service / host port.
+
+services:
+  # PHP-FPM application container. Runs migrations once on bring-up.
+  app:
+    build:
+      context: .
+      target: app
+    image: tracker-app:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Passes only once the DB is reachable and migrations have been applied.
+      test: ["CMD-SHELL", "php artisan migrate:status >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    volumes:
+      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+      - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
+    networks:
+      - tracker
+
+  # nginx: serves compiled Vite assets + proxies PHP to app:9000.
+  web:
+    build:
+      context: .
+      target: web
+    image: tracker-web:latest
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks:
+      - tracker
+
+  # PostgreSQL with a named volume for persistence.
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${DB_DATABASE}"
+      POSTGRES_USER: "${DB_USERNAME}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - tracker
+
+  # Laravel scheduler (nightly TMDB refresh job, etc.).
+  scheduler:
+    build:
+      context: .
+      target: app
+    image: tracker-app:latest
+    restart: unless-stopped
+    env_file: .env
+    command: php artisan schedule:work
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+    networks:
+      - tracker
+
+  # Queue worker (database driver).
+  queue:
+    build:
+      context: .
+      target: app
+    image: tracker-app:latest
+    restart: unless-stopped
+    env_file: .env
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
+    networks:
+      - tracker
+
+networks:
+  tracker:
+    driver: bridge
+
+volumes:
+  db_data:
+    driver: local
+  yamtrack_imports:
+    driver: local

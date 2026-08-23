@@ -1,0 +1,89 @@
+# Paste this file into Compose Manager Plus's Compose editor. The application
+# images are prebuilt by GitHub Actions, so the Unraid host needs no source
+# checkout and performs no application build.
+
+services:
+  app:
+    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RUN_MIGRATIONS: 'true'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'php artisan migrate:status >/dev/null 2>&1 || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    volumes:
+      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+      - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
+    networks:
+      - tracker
+
+  web:
+    image: 'ghcr.io/davidabadi/tracker-app-web:${TRACKER_VERSION:-latest}'
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    networks:
+      - tracker
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: '${DB_DATABASE:?Set DB_DATABASE in the ENV editor}'
+      POSTGRES_USER: '${DB_USERNAME:?Set DB_USERNAME in the ENV editor}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD:?Set DB_PASSWORD in the ENV editor}'
+    volumes:
+      - '${DB_DATA_LOCATION:?Set DB_DATA_LOCATION in the ENV editor}:/var/lib/postgresql/data'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - tracker
+
+  scheduler:
+    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    restart: unless-stopped
+    env_file: .env
+    command: php artisan schedule:work
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+    networks:
+      - tracker
+
+  queue:
+    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    restart: unless-stopped
+    env_file: .env
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
+    networks:
+      - tracker
+
+networks:
+  tracker:
+    driver: bridge
+
+volumes:
+  yamtrack_imports:
+    driver: local
