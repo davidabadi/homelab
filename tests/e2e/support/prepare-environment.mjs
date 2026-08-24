@@ -19,6 +19,7 @@ const environment = {
     APP_URL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:8000',
     TV_HOST: '127.0.0.1',
     SCHEDULE_HOST: 'schedule.localhost',
+    PRESENCE_HOST: 'presence.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,

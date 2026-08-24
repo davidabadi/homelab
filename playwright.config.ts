@@ -13,6 +13,7 @@ const appEnvironment = {
     APP_URL: baseURL,
     TV_HOST: new URL(baseURL).hostname,
     SCHEDULE_HOST: 'schedule.localhost',
+    PRESENCE_HOST: 'presence.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,

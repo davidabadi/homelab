@@ -90,6 +90,56 @@ it('does not expose another users trip by identifier', function () {
         ->assertNotFound();
 });
 
+it('edits confirms and deletes the authenticated users trip', function () {
+    $user = User::factory()->create();
+    $trip = PresenceTrip::factory()->for($user)->create([
+        'entry_date' => '2026-10-01',
+        'exit_date' => '2026-10-05',
+        'status' => PresenceTripStatus::Planned,
+        'notes' => 'Tentative',
+    ]);
+
+    $this->actingAs($user)
+        ->putJson(route('presence.trips.update', $trip), [
+            'entry_date' => '2026-10-01',
+            'exit_date' => '2026-10-07',
+            'status' => 'confirmed',
+            'notes' => 'Departure changed and trip confirmed',
+        ])
+        ->assertOk()
+        ->assertJsonPath('trip.exit_date', '2026-10-07')
+        ->assertJsonPath('trip.status', 'confirmed')
+        ->assertJsonPath('trip.notes', 'Departure changed and trip confirmed');
+
+    expect($trip->fresh()?->status)->toBe(PresenceTripStatus::Confirmed);
+
+    $this->actingAs($user)
+        ->deleteJson(route('presence.trips.destroy', $trip))
+        ->assertNoContent();
+
+    $this->assertModelMissing($trip);
+});
+
+it('cannot edit or delete another users trip', function () {
+    $trip = PresenceTrip::factory()->create();
+    $otherUser = User::factory()->create();
+    $payload = [
+        'entry_date' => '2026-11-01',
+        'exit_date' => '2026-11-02',
+        'status' => 'confirmed',
+        'notes' => 'Unauthorized edit',
+    ];
+
+    $this->actingAs($otherUser)
+        ->putJson(route('presence.trips.update', $trip), $payload)
+        ->assertNotFound();
+    $this->actingAs($otherUser)
+        ->deleteJson(route('presence.trips.destroy', $trip))
+        ->assertNotFound();
+
+    $this->assertModelExists($trip);
+});
+
 it('stores a default planning limit with per-year overrides', function () {
     $user = User::factory()->create();
 
