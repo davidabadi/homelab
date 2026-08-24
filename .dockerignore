@@ -8,6 +8,7 @@
 .env
 .env.*
 !.env.example
+**/schedule.json
 /storage/logs/*
 /storage/framework/cache/*
 /storage/framework/sessions/*

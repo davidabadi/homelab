@@ -18,6 +18,9 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
+  # Deliberately independent of github.repository. Keep the current GHCR
+  # package names through the functional cutover and any later repo rename.
+  IMAGE_PREFIX: ghcr.io/davidabadi/homelab
 
 jobs:
   publish:
@@ -50,7 +53,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.target }}
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.target }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag

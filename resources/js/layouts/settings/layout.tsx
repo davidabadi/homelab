@@ -40,7 +40,7 @@ const settingsNavItems: SettingsNavItem[] = [
         icon: Palette,
     },
     {
-        title: 'Import history',
+        title: 'Import & export',
         href: importHistory(),
         icon: FileClock,
     },
@@ -66,7 +66,7 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                             Settings
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Manage your account, security, and appearance
+                            Manage your account, security, appearance, and data
                         </p>
                     </div>
                 </header>

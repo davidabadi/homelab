@@ -22,7 +22,7 @@ beforeEach(function () {
             'driver' => 'pgsql',
             'host' => 'database.internal',
             'port' => '5544',
-            'database' => 'tracker production',
+            'database' => 'homelab production',
             'username' => 'backup-user',
             'password' => 'super-secret-password',
             'charset' => 'utf8',
@@ -54,7 +54,7 @@ test('a successful dump is finalized with the expected connection arguments and 
         return Process::result();
     });
 
-    $expectedPath = $this->dumpDirectory.DIRECTORY_SEPARATOR.'tracker-production-2026-07-14_020000.sql';
+    $expectedPath = $this->dumpDirectory.DIRECTORY_SEPARATOR.'homelab-production-2026-07-14_020000.sql';
 
     $this->artisan('app:dump-database')
         ->expectsOutputToContain($expectedPath)
@@ -74,15 +74,16 @@ test('a successful dump is finalized with the expected connection arguments and 
             '--username',
             'backup-user',
             '--dbname',
-            'tracker production',
+            'homelab production',
             '--format',
             'plain',
             '--clean',
             '--if-exists',
             '--no-owner',
+            '--no-privileges',
             '--no-password',
             '--file',
-            $process->command[16],
+            $process->command[17],
         ])->not->toContain('super-secret-password')
             ->and($process->environment)->toMatchArray([
                 'PGPASSWORD' => 'super-secret-password',
@@ -96,7 +97,7 @@ test('a successful dump is finalized with the expected connection arguments and 
 test('a failed pg dump returns failure, redacts the password, and removes its temporary file', function () {
     Carbon::setTestNow('2026-07-14 02:00:00');
     File::ensureDirectoryExists($this->dumpDirectory);
-    $expiredDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'tracker-production-2026-07-01_020000.sql';
+    $expiredDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'homelab-production-2026-07-01_020000.sql';
     File::put($expiredDump, 'completed old dump');
     touch($expiredDump, now()->startOfDay()->subDays(8)->getTimestamp());
 
@@ -123,9 +124,9 @@ test('completed dumps older than the retention cutoff are removed after a succes
     Carbon::setTestNow('2026-07-14 14:30:00');
     File::ensureDirectoryExists($this->dumpDirectory);
 
-    $expiredDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'tracker-production-2026-07-06_020000.sql';
-    $boundaryDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'tracker-production-2026-07-07_000000.sql';
-    $temporaryFile = $this->dumpDirectory.DIRECTORY_SEPARATOR.'.tracker-production-old.tmp';
+    $expiredDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'homelab-production-2026-07-06_020000.sql';
+    $boundaryDump = $this->dumpDirectory.DIRECTORY_SEPARATOR.'homelab-production-2026-07-07_000000.sql';
+    $temporaryFile = $this->dumpDirectory.DIRECTORY_SEPARATOR.'.homelab-production-old.tmp';
     $unrelatedFile = $this->dumpDirectory.DIRECTORY_SEPARATOR.'notes.txt';
 
     File::put($expiredDump, 'expired dump');
@@ -154,7 +155,7 @@ test('completed dumps older than the retention cutoff are removed after a succes
         ->and(File::exists($boundaryDump))->toBeTrue()
         ->and(File::exists($temporaryFile))->toBeTrue()
         ->and(File::exists($unrelatedFile))->toBeTrue()
-        ->and(File::exists($this->dumpDirectory.DIRECTORY_SEPARATOR.'tracker-production-2026-07-14_143000.sql'))->toBeTrue();
+        ->and(File::exists($this->dumpDirectory.DIRECTORY_SEPARATOR.'homelab-production-2026-07-14_143000.sql'))->toBeTrue();
 });
 
 test('an invalid retention value fails before pg dump is invoked', function () {

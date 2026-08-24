@@ -232,6 +232,7 @@ class DumpDatabase extends Command
             '--clean',
             '--if-exists',
             '--no-owner',
+            '--no-privileges',
             '--no-password',
             '--file',
             $temporaryPath,

@@ -1,10 +1,12 @@
-# Tracker — Self-Hosted TV & Movie Tracker PWA
+# Homelab — Modular Laravel Applications
 
-A multi-user, self-hosted replacement for a Trakt/TV-Time-style tracker. Track
-what you're watching, what's next, and what's coming — per household member —
-without depending on a third-party service that could shut down or paywall your
-history. Reachable from anywhere through your own Cloudflare Tunnel; installable
-as a PWA on your phone.
+A single Laravel stack serving TV Time, Schedule Board, and US Presence. All
+three modules share one PHP/nginx/PostgreSQL deployment and are selected by the
+incoming hostname. TV Time remains an installable PWA on its existing origin.
+
+For the production Unraid migration, database safeguards, Cloudflare mappings,
+Schedule Board JSON import, and rollback procedure,
+see [`docs/production-cutover-unraid.md`](docs/production-cutover-unraid.md).
 
 See [`docs/tracker-app-spec.md`](docs/tracker-app-spec.md) for the full
 functional spec, data model, and the implementation checklist (what's done vs.
@@ -75,7 +77,8 @@ cp .env.example .env
 docker compose up -d --build --remove-orphans
 ```
 
-Services: `app` (PHP-FPM), `web` (nginx, exposes `${WEB_PORT:-8080}`), `db`
+Services: `app` (PHP-FPM), `web` (one nginx service exposing
+`${WEB_PORT:-8080}` for every module hostname), `db`
 (Postgres, persisted in the `db_data` named volume), `scheduler`
 (`schedule:work`), `queue` (`queue:work`). The `app` container runs migrations
 on bring-up and its healthcheck passes once the DB is reachable and migrated.
@@ -91,9 +94,9 @@ container:
 docker compose exec app php artisan app:make-user
 ```
 
-Point your existing `cloudflared` tunnel at the `web` service / host port; the
-tunnel terminates HTTPS, which service workers require. Set `APP_URL` to the
-public HTTPS URL in that case.
+Point every module route in the existing `cloudflared` tunnel at the same
+`web` host port. Set `APP_URL` and `TV_HOST` to the unchanged TV hostname, then
+set `SCHEDULE_HOST` and `PRESENCE_HOST` to their public hostnames.
 
 ## Database backups
 
@@ -105,7 +108,7 @@ Configure the feature in the Compose environment:
 DB_DUMP_ENABLED=true
 DB_DUMP_CRON="0 2 * * *"
 DB_DUMP_RETENTION_DAYS=7
-DB_DUMP_PATH=/mnt/user/backups/tracker-app
+DB_DUMP_PATH=/mnt/user/backups/homelab
 ```
 
 `DB_DUMP_ENABLED=false` disables the scheduled task. `DB_DUMP_CRON` is evaluated
@@ -116,7 +119,7 @@ start of the current application day minus the configured number of days. It
 defaults to `7`; temporary and unrelated files are not removed. `DB_DUMP_PATH`
 is a host path; Compose bind-mounts it into `/backups/database` in both the
 `app` and `scheduler` containers. On Unraid, select a persistent share such as
-`/mnt/user/backups/tracker-app` and ensure the container can write to it.
+`/mnt/user/backups/homelab` and ensure the container can write to it.
 
 Run an immediate backup from the app container with:
 
@@ -126,11 +129,11 @@ docker compose exec app php artisan app:dump-database
 
 Dumps use PostgreSQL's plain-text SQL format and are named
 `{database}-YYYY-MM-DD_HHMMSS.sql`, for example
-`tracker-2026-07-14_020000.sql`. Restore one with the PostgreSQL 17 client (the
+`homelab-2026-07-14_020000.sql`. Restore one with the PostgreSQL 17 client (the
 command prompts for the database password):
 
 ```bash
-docker compose exec app psql --host=db --port=5432 --username=tracker --dbname=tracker --file=/backups/database/tracker-2026-07-14_020000.sql
+docker compose exec app psql --host=db --port=5432 --username=homelab --dbname=homelab --file=/backups/database/homelab-2026-07-14_020000.sql
 ```
 
 A database dump is a logical backup and is not the same as backing up
@@ -143,22 +146,23 @@ backup strategy.
 This installation uses prebuilt images from GitHub Container Registry. It does
 not require a repository checkout or an image build on the Unraid server.
 
-1. In Compose Manager Plus, add a stack named `tracker-app`. Leave the external
-   ENV and indirect-path fields blank, enable default Compose file discovery,
-   and leave automatic override management enabled.
+1. Create a new Compose Manager Plus stack named `homelab`. Keep the old
+   tracker and Schedule Board stacks intact through the rollback window.
 2. Paste [`docker-compose.unraid.yml`](docker-compose.unraid.yml) into the
    stack's Compose editor.
-3. Paste [`.env.unraid.example`](.env.unraid.example) into the ENV editor and
-   replace `APP_KEY`, `APP_URL`, `DB_PASSWORD`, and `TMDB_API_KEY`.
-4. Ensure the `DB_DATA_LOCATION` directory is on persistent Unraid storage,
-   then select **Compose Up**.
-5. Create the first account from the app container with
-   `php artisan app:make-user`.
+3. Fill [`.env.unraid.example`](.env.unraid.example), preserving the tracker
+   `APP_KEY`, session settings, cookie name, and TV origin. Use the new homelab
+   database path; never share the old tracker PostgreSQL data directory.
+4. Follow the backup, restore rehearsal, guarded database initialization, and
+   cutover steps in the production runbook before routing traffic.
+5. Confirm the restored tracker account and watched history before switching
+   the Cloudflare routes. Use `php artisan app:make-user` only for a deliberate
+   additional account.
 
-The `latest` image tag follows `main`. Pushing a tag beginning with `v` also
-publishes versioned `app` and `web` images; set `TRACKER_VERSION` to that tag to
-pin an installation. The first published GHCR packages may need to be made
-public from the repository owner's GitHub Packages settings before an
+The `latest` image tag follows `main`, but production should use a tested
+`sha-*` or `v*` tag in `HOMELAB_VERSION`. Pushing a tag beginning with `v` also
+publishes versioned `app` and `web` images. The first GHCR packages may need to
+be made public from the repository owner's GitHub Packages settings before an
 unauthenticated Unraid server can pull them.
 
 ## Local (non-Docker) development

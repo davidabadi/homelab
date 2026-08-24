@@ -2,13 +2,17 @@
 # images are prebuilt by GitHub Actions, so the Unraid host needs no source
 # checkout and performs no application build.
 
+# This project intentionally runs beside the legacy tracker and schedule stacks
+# until validation is complete.
+name: homelab
+
 services:
   app:
-    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    image: '${APP_IMAGE_REPOSITORY:?Set APP_IMAGE_REPOSITORY in the ENV editor}:${HOMELAB_VERSION:?Set HOMELAB_VERSION in the ENV editor}'
     restart: unless-stopped
     env_file: .env
     environment:
-      RUN_MIGRATIONS: 'true'
+      RUN_MIGRATIONS: '${RUN_MIGRATIONS:-true}'
     depends_on:
       db:
         condition: service_healthy
@@ -20,13 +24,17 @@ services:
       retries: 12
       start_period: 40s
     volumes:
-      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+      - type: bind
+        source: '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}'
+        target: /backups/database
+        bind:
+          create_host_path: false
       - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
     networks:
-      - tracker
+      - homelab
 
   web:
-    image: 'ghcr.io/davidabadi/tracker-app-web:${TRACKER_VERSION:-latest}'
+    image: '${WEB_IMAGE_REPOSITORY:?Set WEB_IMAGE_REPOSITORY in the ENV editor}:${HOMELAB_VERSION:?Set HOMELAB_VERSION in the ENV editor}'
     restart: unless-stopped
     depends_on:
       app:
@@ -34,17 +42,35 @@ services:
     ports:
       - '${WEB_PORT:-8080}:80'
     networks:
-      - tracker
+      - homelab
 
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    # Refuse to initialize an empty cluster during a production cutover. This
+    # catches a changed/typoed DB_DATA_LOCATION before Laravel can migrate it.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ "$${REQUIRE_EXISTING_DATABASE:-true}" = "true" ] && [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          echo >&2 "Refusing to start: DB_DATA_LOCATION is not an existing PostgreSQL cluster (PG_VERSION is missing)."
+          exit 1
+        fi
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - --
+    command: ['postgres']
     environment:
       POSTGRES_DB: '${DB_DATABASE:?Set DB_DATABASE in the ENV editor}'
       POSTGRES_USER: '${DB_USERNAME:?Set DB_USERNAME in the ENV editor}'
       POSTGRES_PASSWORD: '${DB_PASSWORD:?Set DB_PASSWORD in the ENV editor}'
+      REQUIRE_EXISTING_DATABASE: '${REQUIRE_EXISTING_DATABASE:-true}'
     volumes:
-      - '${DB_DATA_LOCATION:?Set DB_DATA_LOCATION in the ENV editor}:/var/lib/postgresql/data'
+      - type: bind
+        source: '${DB_DATA_LOCATION:?Set DB_DATA_LOCATION in the ENV editor}'
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
       interval: 5s
@@ -52,10 +78,10 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      - tracker
+      - homelab
 
   scheduler:
-    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    image: '${APP_IMAGE_REPOSITORY:?Set APP_IMAGE_REPOSITORY in the ENV editor}:${HOMELAB_VERSION:?Set HOMELAB_VERSION in the ENV editor}'
     restart: unless-stopped
     env_file: .env
     command: php artisan schedule:work
@@ -63,12 +89,16 @@ services:
       app:
         condition: service_healthy
     volumes:
-      - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
+      - type: bind
+        source: '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}'
+        target: /backups/database
+        bind:
+          create_host_path: false
     networks:
-      - tracker
+      - homelab
 
   queue:
-    image: 'ghcr.io/davidabadi/tracker-app-app:${TRACKER_VERSION:-latest}'
+    image: '${APP_IMAGE_REPOSITORY:?Set APP_IMAGE_REPOSITORY in the ENV editor}:${HOMELAB_VERSION:?Set HOMELAB_VERSION in the ENV editor}'
     restart: unless-stopped
     env_file: .env
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
@@ -78,12 +108,13 @@ services:
     volumes:
       - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
     networks:
-      - tracker
+      - homelab
 
 networks:
-  tracker:
+  homelab:
     driver: bridge
 
 volumes:
   yamtrack_imports:
+    name: homelab_yamtrack_imports
     driver: local

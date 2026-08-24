@@ -1,4 +1,4 @@
-# Self-hosted TV/Movie tracker stack.
+# Self-hosted Homelab stack.
 #
 # Variable substitution (${...}) and the app services' env_file both read the
 # repo-root .env, so it is the single source of configuration. No cloudflared
@@ -10,17 +10,18 @@ services:
     build:
       context: .
       target: app
-    image: tracker-app:latest
+    image: homelab-app:latest
     restart: unless-stopped
     env_file: .env
     environment:
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: 'true'
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
       # Passes only once the DB is reachable and migrations have been applied.
-      test: ["CMD-SHELL", "php artisan migrate:status >/dev/null 2>&1 || exit 1"]
+      test:
+        ['CMD-SHELL', 'php artisan migrate:status >/dev/null 2>&1 || exit 1']
       interval: 10s
       timeout: 10s
       retries: 12
@@ -29,48 +30,48 @@ services:
       - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
       - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
     networks:
-      - tracker
+      - homelab
 
   # nginx: serves compiled Vite assets + proxies PHP to app:9000.
   web:
     build:
       context: .
       target: web
-    image: tracker-web:latest
+    image: homelab-web:latest
     restart: unless-stopped
     depends_on:
       app:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - '${WEB_PORT:-8080}:80'
     networks:
-      - tracker
+      - homelab
 
   # PostgreSQL with a named volume for persistence.
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${DB_DATABASE}"
-      POSTGRES_USER: "${DB_USERNAME}"
-      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_DB: '${DB_DATABASE}'
+      POSTGRES_USER: '${DB_USERNAME}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD}'
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
     networks:
-      - tracker
+      - homelab
 
   # Laravel scheduler (nightly TMDB refresh job, etc.).
   scheduler:
     build:
       context: .
       target: app
-    image: tracker-app:latest
+    image: homelab-app:latest
     restart: unless-stopped
     env_file: .env
     command: php artisan schedule:work
@@ -80,14 +81,14 @@ services:
     volumes:
       - '${DB_DUMP_PATH:?Set DB_DUMP_PATH in the ENV editor}:/backups/database'
     networks:
-      - tracker
+      - homelab
 
   # Queue worker (database driver).
   queue:
     build:
       context: .
       target: app
-    image: tracker-app:latest
+    image: homelab-app:latest
     restart: unless-stopped
     env_file: .env
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
@@ -97,10 +98,10 @@ services:
     volumes:
       - yamtrack_imports:/var/www/html/storage/app/private/yamtrack-imports
     networks:
-      - tracker
+      - homelab
 
 networks:
-  tracker:
+  homelab:
     driver: bridge
 
 volumes:

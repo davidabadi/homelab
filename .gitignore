@@ -9,6 +9,10 @@
 /blob-report/
 /tests/e2e/.auth/
 /database/e2e.sqlite
+# Legacy Schedule Board runtime state is migration input, never repository or
+# Laravel production persistence. Use the authenticated JSON importer instead.
+schedule.json
+**/schedule.json
 /public/storage
 /storage/*.key
 /storage/pail

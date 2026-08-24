@@ -2,10 +2,12 @@ import { Head, useForm, usePoll } from '@inertiajs/react';
 import {
     AlertTriangle,
     CheckCircle2,
+    Download,
     FileUp,
     LoaderCircle,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import YamtrackExportController from '@/actions/App/Http/Controllers/Settings/YamtrackExportController';
 import { store } from '@/actions/App/Http/Controllers/Settings/YamtrackImportController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -114,10 +116,24 @@ export default function YamtrackImportPage({ importRun }: Props) {
 
     return (
         <>
-            <Head title="Import history" />
-            <h1 className="sr-only">Import history</h1>
+            <Head title="Import & export" />
+            <h1 className="sr-only">Import and export history</h1>
 
             <div className="space-y-6">
+                <section className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                    <Heading
+                        variant="small"
+                        title="Export history"
+                        description="Download your Tracker library and watched history in Yamtrack CSV format. You can import this file back into Tracker."
+                    />
+                    <Button asChild className="shrink-0">
+                        <a href={YamtrackExportController().url} download>
+                            <Download />
+                            Export CSV
+                        </a>
+                    </Button>
+                </section>
+
                 <section className="space-y-6 rounded-2xl border border-border/60 bg-card/70 p-4 sm:p-6">
                     <Heading
                         variant="small"

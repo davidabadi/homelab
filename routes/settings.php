@@ -3,6 +3,7 @@
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\TimezoneController;
+use App\Http\Controllers\Settings\YamtrackExportController;
 use App\Http\Controllers\Settings\YamtrackImportController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +17,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('settings/import', [YamtrackImportController::class, 'index'])->name('yamtrack-import.index');
     Route::post('settings/import', [YamtrackImportController::class, 'store'])->name('yamtrack-import.store');
     Route::get('settings/import/{yamtrackImport}', [YamtrackImportController::class, 'show'])->name('yamtrack-import.show');
+    Route::get('settings/export', YamtrackExportController::class)->name('yamtrack-export');
 
     // Silent background sync of the user's browser-detected timezone; drives the
     // calendar-day cutoff for their Upcoming feed and Watch List.
