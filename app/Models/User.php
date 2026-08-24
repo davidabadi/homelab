@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -125,5 +126,23 @@ class User extends Authenticatable implements PasskeyUser
     public function scheduleJobs(): HasMany
     {
         return $this->hasMany(ScheduleJob::class);
+    }
+
+    /** @return HasMany<PresenceTrip, $this> */
+    public function presenceTrips(): HasMany
+    {
+        return $this->hasMany(PresenceTrip::class);
+    }
+
+    /** @return HasMany<PresencePlanningLimit, $this> */
+    public function presencePlanningLimits(): HasMany
+    {
+        return $this->hasMany(PresencePlanningLimit::class);
+    }
+
+    /** @return HasOne<PresencePlanningSetting, $this> */
+    public function presencePlanningSetting(): HasOne
+    {
+        return $this->hasOne(PresencePlanningSetting::class);
     }
 }
