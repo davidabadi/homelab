@@ -29,6 +29,36 @@ test('adds confirms edits and deletes a trip while dashboard totals follow', asy
     await addDialog.getByRole('button', { name: 'Save trip' }).click();
     await expect(addDialog).toBeHidden();
 
+    const substantialPresenceTest = page.getByTestId('spt-section');
+    await expect(substantialPresenceTest).toBeVisible();
+    await expect(
+        substantialPresenceTest.getByText('Substantial Presence Test', {
+            exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+        substantialPresenceTest
+            .getByText('Exact 3-year weighted SPT total')
+            .locator('..'),
+    ).toContainText('0');
+    await expect(
+        substantialPresenceTest.getByText('31-day requirement').locator('..'),
+    ).toContainText('Not met');
+    await expect(
+        substantialPresenceTest.getByText('183-day requirement').locator('..'),
+    ).toContainText('Not met');
+    await expect(
+        substantialPresenceTest
+            .getByText('Overall Substantial Presence Test')
+            .locator('..'),
+    ).toContainText('Not met');
+    await expect(
+        page.getByText('Legacy spreadsheet projection', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Legacy spreadsheet components')).toBeVisible();
+    await expect(
+        page.getByText('Spreadsheet-compatible weighted total').locator('..'),
+    ).toContainText('3');
     await expect(page.getByText('Projected year').locator('..')).toContainText(
         '3',
     );
@@ -48,6 +78,11 @@ test('adds confirms edits and deletes a trip while dashboard totals follow', asy
     await expect(page.getByText('Actual elapsed').locator('..')).toContainText(
         '4',
     );
+    await expect(
+        substantialPresenceTest
+            .getByText('Exact 3-year weighted SPT total')
+            .locator('..'),
+    ).toContainText('4');
     await page
         .getByRole('button', {
             name: 'Edit trip Jan 10, 2026 to Jan 13, 2026',

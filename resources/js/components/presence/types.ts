@@ -26,6 +26,12 @@ export type PresenceSummary = {
     previous_year_total: number;
     two_years_prior_total: number;
     legacy_weighted_total: number;
+    spt_current_year_days: number;
+    spt_weighted_total_sixths: number;
+    spt_weighted_total: string;
+    spt_meets_31_day_requirement: boolean;
+    spt_meets_183_day_requirement: boolean;
+    spt_met: boolean;
     planning_limit: number | null;
     planning_basis: string;
     selected_calculated_total: number;

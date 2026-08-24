@@ -92,6 +92,17 @@ function MetricCard({
     );
 }
 
+function RequirementStatus({ label, met }: { label: string; met: boolean }) {
+    return (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 p-3 dark:bg-stone-950/40">
+            <span className="text-sm font-medium">{label}</span>
+            <Badge variant={met ? 'default' : 'secondary'}>
+                {met ? 'Met' : 'Not met'}
+            </Badge>
+        </div>
+    );
+}
+
 const phaseLabels: Record<PresenceTrip['phase'], string> = {
     actual: 'Actual',
     current: 'Current stay',
@@ -311,22 +322,78 @@ export default function PresenceIndex(props: Props) {
                             value={summary.projected_total}
                         />
                         <MetricCard
-                            detail="Legacy 1 + ⅓ + ⅙; each component rounds up."
-                            label="3-year weighted"
+                            detail="Preserves prior spreadsheet behavior by independently rounding up the prior-year fractions."
+                            label="Legacy spreadsheet projection"
                             value={summary.legacy_weighted_total}
                         />
                         <MetricCard
-                            detail="Your personal planning aid."
+                            detail="Your user-defined planning aid; it does not determine SPT status."
                             label="Planning limit"
                             value={summary.planning_limit ?? 'Not set'}
                         />
                         <MetricCard
-                            detail="Limit minus the legacy weighted total."
+                            detail="Personal limit minus the legacy spreadsheet projection."
                             label="Remaining"
                             value={
                                 summary.remaining_against_planning_limit ?? '—'
                             }
                         />
+                    </div>
+                </section>
+
+                <section
+                    className="rounded-2xl border border-emerald-700/25 bg-emerald-50 p-5 shadow-sm sm:p-6 dark:border-emerald-400/25 dark:bg-emerald-400/10"
+                    data-testid="spt-section"
+                >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold tracking-[0.12em] text-emerald-800 uppercase dark:text-emerald-300">
+                                Statutory calculation
+                            </p>
+                            <h2 className="mt-1 text-2xl font-black tracking-tight">
+                                Substantial Presence Test
+                            </h2>
+                        </div>
+                        <Badge
+                            className="w-fit text-sm"
+                            variant={summary.spt_met ? 'default' : 'secondary'}
+                        >
+                            Overall: {summary.spt_met ? 'Met' : 'Not met'}
+                        </Badge>
+                    </div>
+                    <p className="mt-3 max-w-3xl text-sm leading-relaxed text-stone-600 dark:text-stone-300">
+                        Uses confirmed current-year days only through the as-of
+                        date and confirmed prior-year trips. Planned trips and
+                        future confirmed days remain projections and do not
+                        contribute to this statutory result.
+                    </p>
+                    <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_1.2fr]">
+                        <MetricCard
+                            detail="Confirmed elapsed days used by the statutory test."
+                            label="Current-year SPT days"
+                            tone="actual"
+                            value={summary.spt_current_year_days}
+                        />
+                        <MetricCard
+                            detail="Exact server-calculated total; prior years are weighted without independent rounding."
+                            label="Exact 3-year weighted SPT total"
+                            tone="actual"
+                            value={summary.spt_weighted_total}
+                        />
+                        <div className="grid gap-2 rounded-2xl border border-emerald-700/20 bg-emerald-100/60 p-3 dark:border-emerald-400/20 dark:bg-emerald-950/30">
+                            <RequirementStatus
+                                label="31-day requirement"
+                                met={summary.spt_meets_31_day_requirement}
+                            />
+                            <RequirementStatus
+                                label="183-day requirement"
+                                met={summary.spt_meets_183_day_requirement}
+                            />
+                            <RequirementStatus
+                                label="Overall Substantial Presence Test"
+                                met={summary.spt_met}
+                            />
+                        </div>
                     </div>
                 </section>
 
@@ -342,7 +409,7 @@ export default function PresenceIndex(props: Props) {
                                 projection.
                             </p>
                             <p className="mt-1 text-xs opacity-80">
-                                The weighted projection is{' '}
+                                The legacy spreadsheet projection is{' '}
                                 {Math.abs(
                                     summary.remaining_against_planning_limit ??
                                         0,
@@ -357,8 +424,13 @@ export default function PresenceIndex(props: Props) {
                     <section className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
                         <h2 className="flex items-center gap-2 font-bold">
                             <Gauge className="size-5 text-emerald-700 dark:text-emerald-300" />
-                            Weighted components
+                            Legacy spreadsheet components
                         </h2>
+                        <p className="mt-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                            Historical compatibility view: prior-year fractions
+                            are independently rounded up to preserve the
+                            original spreadsheet behavior.
+                        </p>
                         <div className="mt-4 grid gap-2">
                             {weightedComponents.map((component) => (
                                 <div
@@ -377,7 +449,9 @@ export default function PresenceIndex(props: Props) {
                                 </div>
                             ))}
                             <div className="flex items-center justify-between border-t border-stone-200 pt-3 font-bold dark:border-stone-800">
-                                <span>Weighted total</span>
+                                <span>
+                                    Spreadsheet-compatible weighted total
+                                </span>
                                 <span className="text-xl tabular-nums">
                                     {summary.legacy_weighted_total}
                                 </span>
@@ -396,8 +470,8 @@ export default function PresenceIndex(props: Props) {
                             </p>
                             <p className="mt-1 text-sm text-stone-500">
                                 {summary.planning_limit === null
-                                    ? 'Set a personal limit to see remaining room.'
-                                    : `Against a ${summary.planning_limit}-day limit using the legacy weighted basis.`}
+                                    ? 'Set a user-defined personal limit to see remaining room. It does not determine SPT status.'
+                                    : `Against your user-defined ${summary.planning_limit}-day limit using the legacy spreadsheet projection; this does not determine SPT status.`}
                             </p>
                         </div>
                         <Button
