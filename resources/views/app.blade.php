@@ -1,5 +1,6 @@
+@php($module = array_search(request()->getHost(), config('modules.hosts'), true) ?: 'shared')
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-app-module="{{ $module }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -33,8 +34,10 @@
         <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">
         <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
-        {{-- PWA manifest (built by vite-plugin-pwa, served from the root route) --}}
-        <link rel="manifest" href="/manifest.webmanifest">
+        @if ($module === 'tv')
+            {{-- TV Time PWA manifest (built by vite-plugin-pwa, served from the TV host root) --}}
+            <link rel="manifest" href="/manifest.webmanifest">
+        @endif
         <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
         <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 

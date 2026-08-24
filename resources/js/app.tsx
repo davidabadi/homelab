@@ -3,6 +3,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
 import AuthLayout from '@/layouts/auth-layout';
+import PresenceLayout from '@/layouts/presence-layout';
+import ScheduleLayout from '@/layouts/schedule-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import TrackerLayout from '@/layouts/tracker-layout';
 
@@ -23,10 +25,16 @@ createInertiaApp({
                 return AuthLayout;
             case name.startsWith('settings/'):
                 return [TrackerLayout, SettingsLayout];
+            case name.startsWith('schedule/'):
+                return ScheduleLayout;
+            case name.startsWith('presence/'):
+                return PresenceLayout;
             case isTrackerPage(name):
                 return TrackerLayout;
             default:
-                return TrackerLayout;
+                throw new Error(
+                    `No layout configured for Inertia page: ${name}`,
+                );
         }
     },
     strictMode: true,
@@ -49,7 +57,11 @@ initializeTheme();
 // Register the PWA service worker. It's built by vite-plugin-pwa into
 // public/build but served from the site root (see the /sw.js route) so its
 // scope covers the whole app. Skipped in dev, where no build output exists.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (
+    import.meta.env.PROD &&
+    document.documentElement.dataset.appModule === 'tv' &&
+    'serviceWorker' in navigator
+) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch((err) => {
             console.error('Service worker registration failed:', err);

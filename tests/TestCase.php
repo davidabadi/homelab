@@ -7,6 +7,15 @@ use Laravel\Fortify\Features;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withServerVariables([
+            'HTTP_HOST' => (string) config('modules.hosts.tv'),
+        ]);
+    }
+
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
     {
         if (! Features::enabled($feature)) {
