@@ -114,4 +114,16 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->hasMany(YamtrackImport::class);
     }
+
+    /** @return HasMany<ScheduleResource, $this> */
+    public function scheduleResources(): HasMany
+    {
+        return $this->hasMany(ScheduleResource::class);
+    }
+
+    /** @return HasMany<ScheduleJob, $this> */
+    public function scheduleJobs(): HasMany
+    {
+        return $this->hasMany(ScheduleJob::class);
+    }
 }
