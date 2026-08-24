@@ -8,6 +8,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,23 +24,35 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Wayfinder routes must remain relative because the same compiled
             // image is deployed behind environment-specific hostnames.
-            $isGeneratingWayfinderRoutes = app()->runningInConsole()
-                && in_array('wayfinder:generate', $_SERVER['argv'] ?? [], true);
+            $isGeneratingWayfinderRoutes = ($_SERVER['argv'][1] ?? null) === 'wayfinder:generate';
 
             foreach ($moduleRoutes as $module => $routeFile) {
                 $host = config("modules.hosts.{$module}");
+
+                if ($isGeneratingWayfinderRoutes) {
+                    // Keep identical module roots from replacing each other in
+                    // the route collection, then restore their real relative URIs.
+                    $routeCount = count(Route::getRoutes()->getRoutes());
+                    $generationPrefix = "__wayfinder/{$module}";
+
+                    Route::middleware('web')
+                        ->prefix($generationPrefix)
+                        ->group($routeFile);
+
+                    foreach (array_slice(Route::getRoutes()->getRoutes(), $routeCount) as $route) {
+                        $route->setUri(Str::after($route->uri(), $generationPrefix) ?: '/');
+                    }
+
+                    continue;
+                }
 
                 if (! is_string($host) || $host === '') {
                     continue;
                 }
 
-                $routes = Route::middleware('web');
-
-                if (! $isGeneratingWayfinderRoutes) {
-                    $routes->domain($host);
-                }
-
-                $routes->group($routeFile);
+                Route::middleware('web')
+                    ->domain($host)
+                    ->group($routeFile);
             }
         },
     )
