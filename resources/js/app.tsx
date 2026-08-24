@@ -8,7 +8,10 @@ import ScheduleLayout from '@/layouts/schedule-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import TrackerLayout from '@/layouts/tracker-layout';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName =
+    document.documentElement.dataset.appName ||
+    import.meta.env.VITE_APP_NAME ||
+    'Laravel';
 
 // The four main nav destinations (spec §5) share the tracker shell: bottom
 // tab bar on mobile, sidebar on desktop. Sub-pages (e.g. shows/upcoming) live
@@ -63,8 +66,11 @@ if (
     'serviceWorker' in navigator
 ) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-            console.error('Service worker registration failed:', err);
-        });
+        navigator.serviceWorker
+            .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+            .then((registration) => registration.update())
+            .catch((err) => {
+                console.error('Service worker registration failed:', err);
+            });
     });
 }

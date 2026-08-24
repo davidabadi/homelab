@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="US Presence">
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <path d="M32 10c-10 0-18 8-18 18 0 13 18 27 18 27s18-14 18-27c0-10-8-18-18-18Z" fill="#eff6ff"/>
+  <circle cx="32" cy="28" r="7" fill="#2563eb"/>
+</svg>

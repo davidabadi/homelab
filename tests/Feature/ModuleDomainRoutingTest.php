@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\User;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\Process\Process;
 
@@ -122,6 +123,20 @@ it('does not expose TV routes on future module hosts', function (string $host) {
         ->assertNotFound();
 })->with(['schedule.test', 'presence.test']);
 
+it('does not expose module paths through another configured host', function (
+    string $host,
+    string $path,
+) {
+    $this->actingAs(User::factory()->create())
+        ->get("http://{$host}{$path}")
+        ->assertNotFound();
+})->with([
+    'Schedule API on TV' => ['tv.test', '/api/board'],
+    'Schedule API on Presence' => ['presence.test', '/api/board'],
+    'Presence API on TV' => ['tv.test', '/api/summary/2026'],
+    'Presence API on Schedule' => ['schedule.test', '/api/summary/2026'],
+]);
+
 it('routes each future module host to its own placeholder page', function (
     string $host,
     string $component,
@@ -222,6 +237,81 @@ it('advertises the TV manifest only from documents served by the TV host', funct
         ->assertSee('data-app-module="presence"', escape: false);
 });
 
+it('renders host-aware document branding without leaking TV metadata', function (
+    string $host,
+    string $module,
+    string $name,
+    string $icon,
+) {
+    $this->get("http://{$host}/login")
+        ->assertOk()
+        ->assertSee("data-app-module=\"{$module}\"", escape: false)
+        ->assertSee("data-app-name=\"{$name}\"", escape: false)
+        ->assertSee("<title>{$name}</title>", escape: false)
+        ->assertSee("href=\"{$icon}\"", escape: false)
+        ->when(
+            $module !== 'tv',
+            fn ($response) => $response
+                ->assertDontSee('rel="manifest"', escape: false)
+                ->assertDontSee('/icons/icon-192.png', escape: false),
+        );
+})->with([
+    'TV Time' => ['tv.test', 'tv', 'TV Time', '/icons/icon-192.png'],
+    'Schedule Board' => ['schedule.test', 'schedule', 'Schedule Board', '/icons/schedule.svg'],
+    'US Presence' => ['presence.test', 'presence', 'US Presence', '/icons/presence.svg'],
+]);
+
+it('uses Homelab branding for the intentional 404 on the general domain', function () {
+    $this->get('http://homelab.test/')
+        ->assertNotFound()
+        ->assertSee('<title>Homelab - Not Found</title>', escape: false)
+        ->assertSee('<link rel="icon" href="/icons/homelab.png" type="image/png">', escape: false)
+        ->assertSee('This hostname does not expose an application at this path.');
+});
+
+it('logs out cleanly on every module host', function (string $host) {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post("http://{$host}/logout")
+        ->assertRedirect('/');
+
+    $this->assertGuest();
+})->with(['tv.test', 'schedule.test', 'presence.test']);
+
+it('shares an authenticated session across sibling hosts with secure parent-domain cookies', function () {
+    config()->set('modules.hosts.tv', 'tv.example.test');
+    config()->set('modules.hosts.schedule', 'schedule.example.test');
+    config()->set('session.domain', '.example.test');
+    config()->set('session.secure', true);
+    config()->set('session.http_only', true);
+    config()->set('session.same_site', 'lax');
+    Route::getRoutes()->getByName('schedule.home')?->domain('schedule.example.test');
+
+    $user = User::factory()->create();
+    $response = $this->post('https://tv.example.test/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $response->assertRedirect('/');
+
+    $sessionCookie = collect($response->headers->getCookies())
+        ->first(fn ($cookie) => $cookie->getName() === config('session.cookie'));
+
+    expect($sessionCookie)->not->toBeNull()
+        ->and($sessionCookie->getDomain())->toBe('.example.test')
+        ->and($sessionCookie->isSecure())->toBeTrue()
+        ->and($sessionCookie->isHttpOnly())->toBeTrue()
+        ->and(Str::lower((string) $sessionCookie->getSameSite()))->toBe('lax');
+
+    $this->get('https://schedule.example.test/')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('schedule/index'));
+
+    $this->assertAuthenticatedAs($user);
+});
+
 it('uses explicit layouts and limits service worker registration to TV documents', function () {
     $app = File::get(resource_path('js/app.tsx'));
 
@@ -232,7 +322,9 @@ it('uses explicit layouts and limits service worker registration to TV documents
         ->toContain("case name.startsWith('presence/'):")
         ->toContain('return PresenceLayout')
         ->toContain('No layout configured for Inertia page')
-        ->toContain("document.documentElement.dataset.appModule === 'tv'");
+        ->toContain("document.documentElement.dataset.appModule === 'tv'")
+        ->toContain("scope: '/', updateViaCache: 'none'")
+        ->toContain('registration.update()');
 });
 
 it('keeps existing authenticated TV navigation on the TV host', function () {

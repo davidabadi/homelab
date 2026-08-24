@@ -1,6 +1,7 @@
 @php($module = array_search(request()->getHost(), config('modules.hosts'), true) ?: 'shared')
+@php($branding = config("modules.branding.{$module}", config('modules.branding.shared')))
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-app-module="{{ $module }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-app-module="{{ $module }}" data-app-name="{{ $branding['name'] }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,10 +32,14 @@
             }
         </style>
 
-        <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">
-        <link rel="apple-touch-icon" href="/icons/icon-192.png">
+        @if ($module === 'tv')
+            <link rel="icon" href="{{ $branding['icon'] }}" type="{{ $branding['icon_type'] }}" sizes="192x192">
+        @else
+            <link rel="icon" href="{{ $branding['icon'] }}" type="{{ $branding['icon_type'] }}">
+        @endif
 
         @if ($module === 'tv')
+            <link rel="apple-touch-icon" href="/icons/icon-192.png">
             {{-- TV Time PWA manifest (built by vite-plugin-pwa, served from the TV host root) --}}
             <link rel="manifest" href="/manifest.webmanifest">
         @endif
@@ -46,7 +51,7 @@
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
         <x-inertia::head>
-            <title>{{ config('app.name', 'Laravel') }}</title>
+            <title>{{ $branding['name'] }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">
