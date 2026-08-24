@@ -13,6 +13,7 @@ class PresenceCalculator
 {
     public function __construct(
         private readonly LegacyThreeYearPresenceRule $legacyRule = new LegacyThreeYearPresenceRule,
+        private readonly SubstantialPresenceTestRule $substantialPresenceTestRule = new SubstantialPresenceTestRule,
     ) {}
 
     /**
@@ -23,7 +24,7 @@ class PresenceCalculator
         int $year,
         CarbonImmutable $asOf,
         ?int $planningLimit = null,
-        PresenceTotalBasis $planningBasis = PresenceTotalBasis::LegacyWeighted,
+        PresenceTotalBasis $planningBasis = PresenceTotalBasis::DEFAULT_PLANNING_BASIS,
     ): PresenceYearSummary {
         $trips = array_values(is_array($trips) ? $trips : iterator_to_array($trips));
         $confirmedDaysElapsed = $this->daysForYear($trips, $year, PresenceTripStatus::Confirmed, $asOf);
@@ -32,6 +33,13 @@ class PresenceCalculator
         $projectedTotal = $this->daysForYear($trips, $year);
         $previousYearTotal = $this->daysForYear($trips, $year - 1);
         $twoYearsPriorTotal = $this->daysForYear($trips, $year - 2);
+        $sptPreviousYearDays = $this->daysForYear($trips, $year - 1, PresenceTripStatus::Confirmed);
+        $sptTwoYearsPriorDays = $this->daysForYear($trips, $year - 2, PresenceTripStatus::Confirmed);
+        $substantialPresenceTest = $this->substantialPresenceTestRule->calculate(
+            $confirmedDaysElapsed,
+            $sptPreviousYearDays,
+            $sptTwoYearsPriorDays,
+        );
         $legacyWeightedTotal = $this->legacyRule->calculate(
             $projectedTotal,
             $previousYearTotal,
@@ -54,6 +62,12 @@ class PresenceCalculator
             previousYearTotal: $previousYearTotal,
             twoYearsPriorTotal: $twoYearsPriorTotal,
             legacyWeightedTotal: $legacyWeightedTotal,
+            sptCurrentYearDays: $substantialPresenceTest->currentYearDays,
+            sptWeightedTotalSixths: $substantialPresenceTest->weightedTotalSixths,
+            sptWeightedTotal: $substantialPresenceTest->weightedTotal(),
+            sptMeets31DayRequirement: $substantialPresenceTest->meets31DayRequirement,
+            sptMeets183DayRequirement: $substantialPresenceTest->meets183DayRequirement,
+            sptMet: $substantialPresenceTest->met,
             planningLimit: $planningLimit,
             planningBasis: $planningBasis,
             selectedCalculatedTotal: $selectedCalculatedTotal,

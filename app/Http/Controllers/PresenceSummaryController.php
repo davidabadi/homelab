@@ -24,7 +24,7 @@ class PresenceSummaryController extends Controller
             : $user->localToday();
         $basis = isset($validated['basis'])
             ? PresenceTotalBasis::from($validated['basis'])
-            : PresenceTotalBasis::LegacyWeighted;
+            : PresenceTotalBasis::DEFAULT_PLANNING_BASIS;
         $summary = $this->calculator->calculate($trips, $year, $asOf, $planningLimit, $basis);
 
         return response()->json([

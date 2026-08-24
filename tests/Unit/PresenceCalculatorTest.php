@@ -8,6 +8,7 @@ use App\Models\PresenceTrip;
 use App\Services\Presence\Data\PresenceYearSummary;
 use App\Services\Presence\LegacyThreeYearPresenceRule;
 use App\Services\Presence\PresenceCalculator;
+use App\Services\Presence\SubstantialPresenceTestRule;
 use Carbon\CarbonImmutable;
 use Tests\TestCase;
 
@@ -47,6 +48,7 @@ it('counts February 29 as a calendar day in a leap year', function () {
     $summary = presenceSummary([presenceTrip('2024-02-28', '2024-03-01')], 2024, '2024-12-31');
 
     expect($summary->confirmedScheduledDays)->toBe(3);
+    expect($summary->sptCurrentYearDays)->toBe(3);
 });
 
 it('attributes one cross-year trip to each calendar year automatically', function () {
@@ -54,6 +56,7 @@ it('attributes one cross-year trip to each calendar year automatically', functio
 
     expect(presenceSummary($trips, 2026)->confirmedScheduledDays)->toBe(6)
         ->and(presenceSummary($trips, 2027, '2027-12-31')->confirmedScheduledDays)->toBe(5)
+        ->and(presenceSummary($trips, 2027, '2027-12-31')->sptWeightedTotal)->toBe('7')
         ->and((new PresenceCalculator)->availableYears($trips))->toBe([2026, 2027]);
 });
 
@@ -100,6 +103,8 @@ it('returns zero totals and no generated years when there are no trips', functio
         ->and($summary->plannedDays)->toBe(0)
         ->and($summary->projectedTotal)->toBe(0)
         ->and($summary->legacyWeightedTotal)->toBe(0)
+        ->and($summary->sptWeightedTotalSixths)->toBe(0)
+        ->and($summary->sptMet)->toBeFalse()
         ->and($calculator->availableYears([]))->toBe([]);
 });
 
@@ -118,6 +123,47 @@ it('reproduces the legacy independent round-up weighting rule', function (
     '2025 legacy parity' => [315, 338, 126, 449],
     '2026 projected legacy parity' => [293, 315, 338, 455],
     '2027 zero-current-year parity' => [0, 293, 315, 151],
+]);
+
+it('keeps exact SPT weighting separate from independently rounded legacy weighting', function () {
+    $legacy = (new LegacyThreeYearPresenceRule)->calculate(0, 1, 1);
+    $spt = (new SubstantialPresenceTestRule)->calculate(0, 1, 1);
+
+    expect($legacy)->toBe(2)
+        ->and($spt->weightedTotalSixths)->toBe(3)
+        ->and($spt->weightedTotal())->toBe('1/2');
+});
+
+it('calculates exact SPT weighting for historical spreadsheet totals', function () {
+    $spt = (new SubstantialPresenceTestRule)->calculate(315, 338, 126);
+
+    expect($spt->weightedTotalSixths)->toBe(2692)
+        ->and($spt->weightedTotal())->toBe('448 2/3');
+});
+
+it('requires both statutory SPT conditions', function (
+    int $currentYearDays,
+    int $previousYearDays,
+    int $twoYearsPriorDays,
+    bool $meets31Days,
+    bool $meets183Days,
+    bool $met,
+) {
+    $spt = (new SubstantialPresenceTestRule)->calculate(
+        $currentYearDays,
+        $previousYearDays,
+        $twoYearsPriorDays,
+    );
+
+    expect($spt->meets31DayRequirement)->toBe($meets31Days)
+        ->and($spt->meets183DayRequirement)->toBe($meets183Days)
+        ->and($spt->met)->toBe($met);
+})->with([
+    '30 current-year days despite weighted excess' => [30, 365, 365, false, true, false],
+    '31 current-year days below weighted threshold' => [31, 0, 0, true, false, false],
+    'both requirements satisfied' => [31, 365, 365, true, true, true],
+    'exactly 183 weighted days' => [31, 365, 182, true, true, true],
+    'one sixth below 183 weighted days' => [31, 365, 181, true, false, false],
 ]);
 
 it('calculates prior-year totals as part of the annual summary', function () {
@@ -143,6 +189,51 @@ it('applies a configurable planning limit to the selected total and allows negat
 
     expect($summary->selectedCalculatedTotal)->toBe(200)
         ->and($summary->remainingAgainstPlanningLimit)->toBe(-20);
+});
+
+it('does not use the personal planning limit to determine the statutory SPT result', function () {
+    $summary = (new PresenceCalculator)->calculate(
+        [
+            presenceTrip('2024-01-01', '2024-06-30'),
+            presenceTrip('2025-01-01', '2025-12-31'),
+            presenceTrip('2026-01-01', '2026-01-31'),
+        ],
+        2026,
+        CarbonImmutable::parse('2026-12-31'),
+        planningLimit: 1,
+        planningBasis: PresenceTotalBasis::ConfirmedElapsed,
+    );
+
+    expect($summary->remainingAgainstPlanningLimit)->toBe(-30)
+        ->and($summary->sptWeightedTotalSixths)->toBe(1098)
+        ->and($summary->sptMeets183DayRequirement)->toBeTrue()
+        ->and($summary->sptMet)->toBeTrue();
+});
+
+it('keeps the legacy spreadsheet basis as the explicit planning default', function () {
+    $summary = (new PresenceCalculator)->calculate(
+        [presenceTrip('2025-01-01', '2025-01-01')],
+        2026,
+        CarbonImmutable::parse('2026-12-31'),
+        planningLimit: 10,
+    );
+
+    expect(PresenceTotalBasis::DEFAULT_PLANNING_BASIS)->toBe(PresenceTotalBasis::LegacyWeighted)
+        ->and($summary->planningBasis)->toBe(PresenceTotalBasis::LegacyWeighted)
+        ->and($summary->selectedCalculatedTotal)->toBe(1);
+});
+
+it('excludes planned trips from all SPT years while preserving legacy projection behavior', function () {
+    $summary = presenceSummary([
+        presenceTrip('2024-01-01', '2024-01-01', PresenceTripStatus::Planned),
+        presenceTrip('2025-01-01', '2025-01-01', PresenceTripStatus::Planned),
+        presenceTrip('2026-01-01', '2026-01-01', PresenceTripStatus::Planned),
+    ], 2026);
+
+    expect($summary->legacyWeightedTotal)->toBe(3)
+        ->and($summary->sptCurrentYearDays)->toBe(0)
+        ->and($summary->sptWeightedTotalSixths)->toBe(0)
+        ->and($summary->sptWeightedTotal)->toBe('0');
 });
 
 it('matches the synthetic as-of regression totals without legacy travel fixtures', function () {

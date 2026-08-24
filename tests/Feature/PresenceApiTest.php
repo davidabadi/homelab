@@ -125,8 +125,16 @@ it('uses the annual override in summaries and keeps planning data user scoped', 
         'basis' => 'projected',
     ]))->assertOk()
         ->assertJsonPath('planning_limit', 180)
+        ->assertJsonPath('planning_basis', 'projected')
         ->assertJsonPath('selected_calculated_total', 10)
         ->assertJsonPath('remaining_against_planning_limit', 170)
+        ->assertJsonPath('legacy_weighted_total', 10)
+        ->assertJsonPath('spt_current_year_days', 10)
+        ->assertJsonPath('spt_weighted_total_sixths', 60)
+        ->assertJsonPath('spt_weighted_total', '10')
+        ->assertJsonPath('spt_meets_31_day_requirement', false)
+        ->assertJsonPath('spt_meets_183_day_requirement', false)
+        ->assertJsonPath('spt_met', false)
         ->assertJsonPath('available_years', [2026]);
 
     $this->actingAs($user)->getJson(route('presence.planning.show'))
