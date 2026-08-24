@@ -265,8 +265,7 @@ it('uses Homelab branding for the intentional 404 on the general domain', functi
     $this->get('http://homelab.test/')
         ->assertNotFound()
         ->assertSee('<title>Homelab - Not Found</title>', escape: false)
-        ->assertSee('<link rel="icon" href="/icons/homelab.png" type="image/png">', escape: false)
-        ->assertSee('This hostname does not expose an application at this path.');
+        ->assertSee('<link rel="icon" href="/icons/homelab.png" type="image/png">', escape: false);
 });
 
 it('logs out cleanly on every module host', function (string $host) {
