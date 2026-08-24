@@ -17,6 +17,8 @@ const environment = {
         'base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=',
     APP_DEBUG: 'true',
     APP_URL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:8000',
+    TV_HOST: '127.0.0.1',
+    SCHEDULE_HOST: 'schedule.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,
@@ -26,6 +28,9 @@ const environment = {
     MAIL_MAILER: 'array',
     QUEUE_CONNECTION: 'sync',
     SESSION_DRIVER: 'file',
+    SESSION_DOMAIN: '',
+    SESSION_SECURE_COOKIE: 'false',
+    SESSION_COOKIE: 'homelab_e2e_session',
     TMDB_API_KEY: '',
 };
 

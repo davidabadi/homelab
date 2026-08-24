@@ -6,7 +6,7 @@ use App\Http\Controllers\ScheduleJobController;
 use App\Http\Controllers\ScheduleResourceController;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'schedule/index')
+Route::get('/', [ScheduleBoardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('schedule.home');
 

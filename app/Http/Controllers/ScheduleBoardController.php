@@ -8,10 +8,17 @@ use App\Services\Schedule\ScheduleCalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ScheduleBoardController extends Controller
 {
+    public function index(): InertiaResponse
+    {
+        return Inertia::render('schedule/index');
+    }
+
     public function show(Request $request, ScheduleCalculator $calculator): JsonResponse
     {
         [$resources, $jobs] = $this->board($request);

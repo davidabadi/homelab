@@ -37,9 +37,9 @@ class ImportScheduleBoardRequest extends FormRequest
             'jobs.*.start' => ['required', 'date_format:H:i'],
             'jobs.*.dur' => ['required', 'integer', 'min:1', 'max:10080'],
             'jobs.*.days' => ['required', 'array', 'list', 'min:1', 'max:7'],
-            'jobs.*.days.*' => ['required', 'integer', 'between:0,6', 'distinct'],
+            'jobs.*.days.*' => ['required', 'integer', 'between:0,6'],
             'jobs.*.assigns' => ['present', 'array', 'list'],
-            'jobs.*.assigns.*' => ['string', 'max:255', 'distinct'],
+            'jobs.*.assigns.*' => ['string', 'max:255'],
             'jobs.*.notes' => ['nullable', 'string', 'max:10000'],
         ];
     }
@@ -83,11 +83,31 @@ class ImportScheduleBoardRequest extends FormRequest
                 }
 
                 foreach ($this->input('jobs', []) as $jobIndex => $job) {
-                    if (! is_array($job) || ! is_array($job['assigns'] ?? null)) {
+                    if (! is_array($job)) {
                         continue;
                     }
 
-                    foreach ($job['assigns'] as $assignmentIndex => $assignment) {
+                    $days = $job['days'] ?? null;
+                    if (is_array($days) && count($days) !== count(array_unique($days, SORT_REGULAR))) {
+                        $validator->errors()->add(
+                            "jobs.{$jobIndex}.days",
+                            'A job may not contain the same weekday more than once.',
+                        );
+                    }
+
+                    $assignments = $job['assigns'] ?? null;
+                    if (! is_array($assignments)) {
+                        continue;
+                    }
+
+                    if (count($assignments) !== count(array_unique($assignments, SORT_REGULAR))) {
+                        $validator->errors()->add(
+                            "jobs.{$jobIndex}.assigns",
+                            'A job may not contain the same resource assignment more than once.',
+                        );
+                    }
+
+                    foreach ($assignments as $assignmentIndex => $assignment) {
                         if (is_string($assignment) && ! in_array($assignment, $resourceIds, true)) {
                             $validator->errors()->add(
                                 "jobs.{$jobIndex}.assigns.{$assignmentIndex}",

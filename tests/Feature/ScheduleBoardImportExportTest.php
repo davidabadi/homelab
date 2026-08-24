@@ -70,6 +70,22 @@ it('requires an explicit merge or replace choice for a non-empty board', functio
         ->and($user->scheduleResources()->count())->toBe(2);
 });
 
+it('allows different imported jobs to use the same days and resources', function () {
+    $user = User::factory()->create();
+    $board = legacyScheduleBoard();
+    $board['jobs'][] = [
+        ...$board['jobs'][0],
+        'id' => 'replication',
+        'name' => 'Replication',
+    ];
+
+    $this->actingAs($user)->postJson(route('schedule.board.import'), $board)
+        ->assertOk()
+        ->assertJsonPath('job_count', 2);
+
+    expect($user->scheduleJobs()->count())->toBe(2);
+});
+
 it('merges by portable ids while retaining records absent from the import', function () {
     $user = User::factory()->create();
     ScheduleResource::factory()->for($user)->create([

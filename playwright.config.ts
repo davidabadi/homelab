@@ -11,6 +11,8 @@ const appEnvironment = {
         'base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=',
     APP_DEBUG: 'true',
     APP_URL: baseURL,
+    TV_HOST: new URL(baseURL).hostname,
+    SCHEDULE_HOST: 'schedule.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,
@@ -20,6 +22,9 @@ const appEnvironment = {
     MAIL_MAILER: 'array',
     QUEUE_CONNECTION: 'sync',
     SESSION_DRIVER: 'file',
+    SESSION_DOMAIN: '',
+    SESSION_SECURE_COOKIE: 'false',
+    SESSION_COOKIE: 'homelab_e2e_session',
     TMDB_API_KEY: '',
 };
 
