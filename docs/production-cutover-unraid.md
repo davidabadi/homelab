@@ -47,8 +47,15 @@ running tracker stack before the cutover:
 - `SESSION_COOKIE`, `SESSION_DOMAIN`, `SESSION_DRIVER`, lifetime, encryption,
   secure-cookie, and same-site settings.
 - `APP_URL` and `TV_HOST`, preserving the existing TV HTTPS origin exactly.
+- `PASSKEY_RP_ID`, set to the common parent domain shared by every module host
+  (for example, `example.com`, without a scheme).
 - `WEB_PORT`, unless the new stack must temporarily use a separate validation
   port while the old tracker stack is still running.
+
+Changing the passkey relying party ID invalidates existing WebAuthn credentials
+for the new ceremonies. Passkeys registered with the old TV-only RP ID must be
+re-registered after deployment; their database rows should not be migrated or
+rewritten.
 
 The new database may use the `homelab` database/user/password shown in the
 example; the logical dump is restored into that target. Use a new strong

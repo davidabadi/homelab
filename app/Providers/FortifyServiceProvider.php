@@ -21,7 +21,13 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $allowedOrigins = config('modules.origins', []);
+
+        // Fortify registers its passkey package before application providers.
+        config([
+            'fortify.passkeys.allowed_origins' => $allowedOrigins,
+            'passkeys.allowed_origins' => $allowedOrigins,
+        ]);
     }
 
     /**
