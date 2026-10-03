@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserEpisodeWatch;
 use App\Models\UserShowTracking;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -26,9 +27,9 @@ use Inertia\Response;
  *
  * Shows split by progress: shows with at least one watched episode land in
  * "Watch Next" (pointed at their next unwatched released episode), shows with no
- * progress land in "Haven't Started". A watching show that's fully caught up (no
- * unwatched released episode left) simply drops off the list until a new episode
- * releases — there's nothing to watch next.
+ * progress land in "Haven't Started" once a regular episode has aired. A watching
+ * show that's fully caught up (no unwatched released episode left) simply drops
+ * off the list until a new episode releases — there's nothing to watch next.
  *
  * Everything is scoped to the authenticated user; another household member's
  * progress never appears here.
@@ -44,9 +45,9 @@ class WatchListController extends Controller
     public function shows(Request $request): Response
     {
         $user = $request->user();
+        $today = $user->localToday();
 
-        $trackings = $user->showTrackings()
-            ->where('status', ShowStatus::Watching)
+        $trackings = $this->watchListTrackings($user, ShowStatus::Watching, $today)
             ->with(['show' => function ($query): void {
                 $query->with(['episodes' => function ($query): void {
                     $query->where('season_number', '>', 0)
@@ -58,7 +59,6 @@ class WatchListController extends Controller
 
         $watches = $this->watchesFor($user, $trackings);
 
-        $today = $user->localToday();
         $watchNext = [];
         $haventStarted = [];
 
@@ -86,9 +86,25 @@ class WatchListController extends Controller
         return Inertia::render('shows', [
             'watchNext' => $watchNext,
             'haventStarted' => $haventStarted,
-            'watchLaterCount' => $user->showTrackings()->where('status', ShowStatus::WatchLater)->count(),
+            'watchLaterCount' => $this->watchListTrackings($user, ShowStatus::WatchLater, $today)->count(),
             'watchLater' => Inertia::optional(fn (): array => $this->watchLaterRows($user)),
         ]);
+    }
+
+    /**
+     * Only shows with an aired regular episode belong on the watch list.
+     *
+     * @return Builder<UserShowTracking>
+     */
+    private function watchListTrackings(User $user, ShowStatus $status, CarbonInterface $today): Builder
+    {
+        return $user->showTrackings()->getQuery()
+            ->where('status', $status)
+            ->whereHas('show.episodes', function (Builder $query) use ($today): void {
+                $query->where('season_number', '>', 0)
+                    ->whereNotNull('air_date')
+                    ->whereDate('air_date', '<=', $today);
+            });
     }
 
     /**
@@ -100,8 +116,9 @@ class WatchListController extends Controller
      */
     private function watchLaterRows(User $user): array
     {
-        $trackings = $user->showTrackings()
-            ->where('status', ShowStatus::WatchLater)
+        $today = $user->localToday();
+
+        $trackings = $this->watchListTrackings($user, ShowStatus::WatchLater, $today)
             ->with(['show' => function ($query): void {
                 $query->with(['episodes' => function ($query): void {
                     $query->where('season_number', '>', 0)
@@ -112,7 +129,6 @@ class WatchListController extends Controller
             ->get();
 
         $watches = $this->watchesFor($user, $trackings);
-        $today = $user->localToday();
 
         return $trackings
             ->map(fn (UserShowTracking $tracking): array => $this->buildShowRow($tracking->show, $watches, ShowStatus::WatchLater, $today))
@@ -253,9 +269,8 @@ class WatchListController extends Controller
         $watchedCount = $released->count() - $unwatchedReleased->count();
 
         // The episode to surface, and how many unwatched released episodes come
-        // after it. Haven't-started shows without any released episode still get
-        // a row (pointed at their first episode) so they don't disappear.
-        $next = $unwatchedReleased->first() ?? $episodes->first();
+        // after it.
+        $next = $unwatchedReleased->first();
         $remaining = max(0, $unwatchedReleased->count() - 1);
 
         if ($watchedCount === 0) {
@@ -265,7 +280,7 @@ class WatchListController extends Controller
         } else {
             // Fully caught up on everything released: surface the latest episode.
             $section = 'caught_up';
-            $next = $released->last() ?? $episodes->last();
+            $next = $released->last();
             $remaining = 0;
         }
 

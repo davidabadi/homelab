@@ -113,6 +113,74 @@ it('orders Watch Next by the most recently watched show', function () {
         );
 });
 
+it('excludes shows without aired regular episodes from every watch list section', function (ShowStatus $status, array $episodes) {
+    $this->travelTo(Carbon::parse('2026-07-12 00:30:00', 'UTC'));
+
+    $user = User::factory()->create(['timezone' => 'America/New_York']);
+    $show = Show::factory()->create(['title' => 'VisionQuest']);
+    $tracking = $user->showTrackings()->create(['show_id' => $show->id, 'status' => $status]);
+
+    foreach ($episodes as $attributes) {
+        Episode::factory()->create(['show_id' => $show->id, ...$attributes]);
+    }
+
+    [$released] = makeReleasedShow(1);
+    $user->showTrackings()->create(['show_id' => $released->id, 'status' => $status]);
+
+    $this->actingAs($user)->get(route('shows'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('watchNext', 0)
+            ->has('haventStarted', $status === ShowStatus::Watching ? 1 : 0)
+            ->where('watchLaterCount', $status === ShowStatus::WatchLater ? 1 : 0)
+            ->reloadOnly(['watchNext', 'haventStarted', 'watchLaterCount', 'watchLater'], fn (Assert $reload) => $reload
+                ->has('watchNext', 0)
+                ->has('haventStarted', $status === ShowStatus::Watching ? 1 : 0)
+                ->has('watchLater', $status === ShowStatus::WatchLater ? 1 : 0)
+                ->where('watchLaterCount', $status === ShowStatus::WatchLater ? 1 : 0)
+                ->where($status === ShowStatus::Watching ? 'haventStarted.0.show_id' : 'watchLater.0.show_id', $released->id)
+            )
+        );
+
+    expect($tracking->fresh()->status)->toBe($status);
+})->with([ShowStatus::Watching, ShowStatus::WatchLater])->with([
+    'no episodes' => [[]],
+    'future premiere in user timezone' => [[['season_number' => 1, 'episode_number' => 1, 'air_date' => '2026-07-12']]],
+    'unknown air date' => [[['season_number' => 1, 'episode_number' => 1, 'air_date' => null]]],
+    'only an aired special' => [[
+        ['season_number' => 0, 'episode_number' => 1, 'air_date' => '2026-07-01'],
+        ['season_number' => 1, 'episode_number' => 1, 'air_date' => '2026-07-12'],
+    ]],
+]);
+
+it('adds a tracked show to the watch list when its premiere reaches the user local date', function (ShowStatus $status) {
+    $this->travelTo(Carbon::parse('2026-07-12 04:30:00', 'UTC'));
+
+    $user = User::factory()->create(['timezone' => 'America/New_York']);
+    $show = Show::factory()->create();
+    $episode = Episode::factory()->create([
+        'show_id' => $show->id,
+        'season_number' => 1,
+        'episode_number' => 1,
+        'air_date' => '2026-07-12',
+    ]);
+    $user->showTrackings()->create(['show_id' => $show->id, 'status' => $status]);
+
+    $section = $status === ShowStatus::Watching ? 'haventStarted' : 'watchLater';
+
+    $this->actingAs($user)->get(route('shows'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->reloadOnly(['watchNext', 'haventStarted', 'watchLaterCount', 'watchLater'], fn (Assert $reload) => $reload
+                ->has('watchNext', 0)
+                ->has($section, 1)
+                ->where($section.'.0.show_id', $show->id)
+                ->where($section.'.0.episode.id', $episode->id)
+                ->where('watchLaterCount', $status === ShowStatus::WatchLater ? 1 : 0)
+            )
+        );
+})->with([ShowStatus::Watching, ShowStatus::WatchLater]);
+
 it('drops a fully caught-up watching show from the watch list', function () {
     $user = User::factory()->create();
     [$show, $eps] = makeReleasedShow(2);
