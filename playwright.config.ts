@@ -2,6 +2,7 @@ import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:8000';
+const externalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === 'true';
 const databasePath = path.resolve('database/e2e.sqlite');
 const appEnvironment = {
     ...process.env,
@@ -14,9 +15,11 @@ const appEnvironment = {
     TV_HOST: new URL(baseURL).hostname,
     SCHEDULE_HOST: 'schedule.localhost',
     PRESENCE_HOST: 'presence.localhost',
+    LIGHTING_HOST: 'lighting.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,
+    DB_URL: '',
     BROADCAST_CONNECTION: 'null',
     CACHE_STORE: 'array',
     FILESYSTEM_DISK: 'local',
@@ -99,15 +102,18 @@ export default defineConfig({
         video: 'retain-on-failure',
     },
     outputDir: 'test-results/artifacts',
-    webServer: {
-        command: 'php artisan serve --env=e2e --host=127.0.0.1 --port=8000',
-        url: `${baseURL}/health`,
-        timeout: 30_000,
-        reuseExistingServer: !process.env.CI,
-        env: appEnvironment,
-        stdout: 'pipe',
-        stderr: 'pipe',
-    },
+    webServer: externalServer
+        ? undefined
+        : {
+              command:
+                  'php artisan serve --env=e2e --host=127.0.0.1 --port=8000',
+              url: `${baseURL}/health`,
+              timeout: 30_000,
+              reuseExistingServer: !process.env.CI,
+              env: appEnvironment,
+              stdout: 'pipe',
+              stderr: 'pipe',
+          },
     projects: [
         {
             name: 'setup',

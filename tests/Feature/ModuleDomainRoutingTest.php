@@ -23,7 +23,8 @@ it('serves the existing TV module on its configured host', function () {
 it('registers every module route under its configured domain', function () {
     expect(Route::getRoutes()->getByName('shows')?->getDomain())->toBe('tv.test')
         ->and(Route::getRoutes()->getByName('schedule.home')?->getDomain())->toBe('schedule.test')
-        ->and(Route::getRoutes()->getByName('presence.home')?->getDomain())->toBe('presence.test');
+        ->and(Route::getRoutes()->getByName('presence.home')?->getDomain())->toBe('presence.test')
+        ->and(Route::getRoutes()->getByName('lighting.home')?->getDomain())->toBe('lighting.test');
 });
 
 it('skips unconfigured module routes during normal application boot', function () {
@@ -37,6 +38,7 @@ it('skips unconfigured module routes during normal application boot', function (
             'TV_HOST' => 'tv.test',
             'SCHEDULE_HOST' => '',
             'PRESENCE_HOST' => '',
+            'LIGHTING_HOST' => '',
         ],
     );
 
@@ -50,6 +52,7 @@ it('skips unconfigured module routes during normal application boot', function (
         ->toHaveKey('shows')
         ->not->toHaveKey('schedule.home')
         ->not->toHaveKey('presence.home')
+        ->not->toHaveKey('lighting.home')
         ->and($routesByName->get('shows')['domain'])->toBe('tv.test');
 });
 
@@ -75,6 +78,7 @@ it('generates environment-neutral Wayfinder routes for every module', function (
                 'TV_HOST' => 'tv.test',
                 'SCHEDULE_HOST' => '',
                 'PRESENCE_HOST' => '',
+                'LIGHTING_HOST' => '',
             ],
         );
 
@@ -92,6 +96,7 @@ it('generates environment-neutral Wayfinder routes for every module', function (
         $tvRoutes = File::get("{$outputPath}/routes/index.ts");
         $scheduleRoutes = File::get("{$outputPath}/routes/schedule/index.ts");
         $presenceRoutes = File::get("{$outputPath}/routes/presence/index.ts");
+        $lightingRoutes = File::get("{$outputPath}/routes/lighting/index.ts");
 
         expect($tvRoutes)
             ->toContain('export const home')
@@ -107,6 +112,11 @@ it('generates environment-neutral Wayfinder routes for every module', function (
             ->toContain('export const home')
             ->toContain("url: '/',")
             ->not->toContain('presence.test')
+            ->not->toContain('__wayfinder')
+            ->and($lightingRoutes)
+            ->toContain('export const home')
+            ->toContain("url: '/',")
+            ->not->toContain('lighting.test')
             ->not->toContain('__wayfinder');
     } finally {
         File::deleteDirectory($outputPath);
@@ -115,13 +125,13 @@ it('generates environment-neutral Wayfinder routes for every module', function (
 
 it('keeps shared Fortify login available on every module host', function (string $host) {
     $this->get("http://{$host}/login")->assertOk();
-})->with(['tv.test', 'schedule.test', 'presence.test']);
+})->with(['tv.test', 'schedule.test', 'presence.test', 'lighting.test']);
 
 it('does not expose TV routes on future module hosts', function (string $host) {
     $this->actingAs(User::factory()->create())
         ->get("http://{$host}/shows")
         ->assertNotFound();
-})->with(['schedule.test', 'presence.test']);
+})->with(['schedule.test', 'presence.test', 'lighting.test']);
 
 it('does not expose module paths through another configured host', function (
     string $host,
@@ -135,6 +145,9 @@ it('does not expose module paths through another configured host', function (
     'Schedule API on Presence' => ['presence.test', '/api/board'],
     'Presence API on TV' => ['tv.test', '/api/summary/2026'],
     'Presence API on Schedule' => ['schedule.test', '/api/summary/2026'],
+    'Lighting API on TV' => ['tv.test', '/api/designs'],
+    'Lighting API on Presence' => ['presence.test', '/api/designs'],
+    'Schedule API on Lighting' => ['lighting.test', '/api/board'],
 ]);
 
 it('routes each future module host to its own placeholder page', function (
@@ -148,6 +161,7 @@ it('routes each future module host to its own placeholder page', function (
 })->with([
     'schedule' => ['schedule.test', 'schedule/index'],
     'presence' => ['presence.test', 'presence/index'],
+    'lighting' => ['lighting.test', 'lighting/index'],
 ]);
 
 it('redirects successful logins through the current module root', function (
@@ -190,6 +204,7 @@ it('redirects successful logins through the current module root', function (
     'TV Time' => ['tv.test', 'shows', '/shows'],
     'Schedule Board' => ['schedule.test', 'schedule/index', null],
     'US Presence' => ['presence.test', 'presence/index', null],
+    'Lighting Panels' => ['lighting.test', 'lighting/index', null],
 ]);
 
 it('keeps the TV service worker and manifest on the TV host only', function (
@@ -208,6 +223,7 @@ it('keeps the TV service worker and manifest on the TV host only', function (
         $this->get("http://tv.test/{$path}")->assertOk();
         $this->get("http://schedule.test/{$path}")->assertNotFound();
         $this->get("http://presence.test/{$path}")->assertNotFound();
+        $this->get("http://lighting.test/{$path}")->assertNotFound();
     } finally {
         if ($stubbed) {
             File::delete($builtPath);
@@ -259,6 +275,7 @@ it('renders host-aware document branding without leaking TV metadata', function 
     'TV Time' => ['tv.test', 'tv', 'TV Time', '/icons/icon-192.png'],
     'Schedule Board' => ['schedule.test', 'schedule', 'Schedule Board', '/icons/schedule.svg'],
     'US Presence' => ['presence.test', 'presence', 'US Presence', '/icons/presence.svg'],
+    'Lighting Panels' => ['lighting.test', 'lighting', 'Lighting Panels', '/icons/lighting.svg'],
 ]);
 
 it('uses Homelab branding for the intentional 404 on the general domain', function () {
@@ -276,7 +293,7 @@ it('logs out cleanly on every module host', function (string $host) {
         ->assertRedirect('/');
 
     $this->assertGuest();
-})->with(['tv.test', 'schedule.test', 'presence.test']);
+})->with(['tv.test', 'schedule.test', 'presence.test', 'lighting.test']);
 
 it('shares an authenticated session across sibling hosts with secure parent-domain cookies', function () {
     config()->set('modules.hosts.tv', 'tv.example.test');
@@ -320,6 +337,8 @@ it('uses explicit layouts and limits service worker registration to TV documents
         ->toContain('return ScheduleLayout')
         ->toContain("case name.startsWith('presence/'):")
         ->toContain('return PresenceLayout')
+        ->toContain("case name.startsWith('lighting/'):")
+        ->toContain('return LightingLayout')
         ->toContain('No layout configured for Inertia page')
         ->toContain("document.documentElement.dataset.appModule === 'tv'")
         ->toContain("scope: '/', updateViaCache: 'none'")

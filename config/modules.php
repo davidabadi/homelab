@@ -9,6 +9,7 @@ $hosts = [
     'tv' => env('TV_HOST') ?: $applicationHost,
     'schedule' => env('SCHEDULE_HOST') ?: null,
     'presence' => env('PRESENCE_HOST') ?: null,
+    'lighting' => env('LIGHTING_HOST') ?: null,
 ];
 
 $applicationOrigin = is_string($applicationHost) && $applicationHost !== ''
@@ -48,6 +49,11 @@ return [
             'name' => config('app.name'),
             'icon' => '/icons/homelab.png',
             'icon_type' => 'image/png',
+        ],
+        'lighting' => [
+            'name' => 'Lighting Panels',
+            'icon' => '/icons/lighting.svg',
+            'icon_type' => 'image/svg+xml',
         ],
     ],
 ];

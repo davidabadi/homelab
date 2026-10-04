@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin } from 'lucide-react';
+import { CalendarDays, Lightbulb, MapPin } from 'lucide-react';
 import type { HTMLAttributes } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { cn } from '@/lib/utils';
@@ -16,11 +16,18 @@ export default function ModuleLogoIcon({
         return <AppLogoIcon className={className} {...props} />;
     }
 
-    const Icon = module === 'presence' ? MapPin : CalendarDays;
+    const Icon =
+        module === 'lighting'
+            ? Lightbulb
+            : module === 'presence'
+              ? MapPin
+              : CalendarDays;
     const moduleClasses =
-        module === 'presence'
-            ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400';
+        module === 'lighting'
+            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+            : module === 'presence'
+              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400';
 
     return (
         <span

@@ -134,6 +134,12 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(PresenceTrip::class);
     }
 
+    /** @return HasMany<LightingDesign, $this> */
+    public function lightingDesigns(): HasMany
+    {
+        return $this->hasMany(LightingDesign::class);
+    }
+
     /** @return HasMany<PresencePlanningLimit, $this> */
     public function presencePlanningLimits(): HasMany
     {

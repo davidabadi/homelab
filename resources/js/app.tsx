@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
 import AuthLayout from '@/layouts/auth-layout';
+import LightingLayout from '@/layouts/lighting-layout';
 import PresenceLayout from '@/layouts/presence-layout';
 import ScheduleLayout from '@/layouts/schedule-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -32,6 +33,8 @@ createInertiaApp({
                 return ScheduleLayout;
             case name.startsWith('presence/'):
                 return PresenceLayout;
+            case name.startsWith('lighting/'):
+                return LightingLayout;
             case isTrackerPage(name):
                 return TrackerLayout;
             default:

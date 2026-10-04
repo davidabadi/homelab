@@ -22,7 +22,21 @@ class PrepareE2E extends Command
             return self::FAILURE;
         }
 
+        $database = config('database.connections.sqlite.database');
+        $expectedPath = realpath(database_path('e2e.sqlite'));
+
+        if (config('database.default') !== 'sqlite'
+            || filled(config('database.connections.sqlite.url'))
+            || ! is_string($database)
+            || $expectedPath === false
+            || realpath($database) !== $expectedPath) {
+            $this->components->error('E2E preparation requires the isolated database/e2e.sqlite file and an empty DB_URL.');
+
+            return self::FAILURE;
+        }
+
         $exitCode = Artisan::call('migrate:fresh', [
+            '--database' => 'sqlite',
             '--force' => true,
             '--seed' => true,
             '--seeder' => E2ETestSeeder::class,
