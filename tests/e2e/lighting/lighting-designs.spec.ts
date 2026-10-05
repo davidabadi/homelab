@@ -233,6 +233,12 @@ async function dragComponentTo(
     await device.scrollIntoViewIfNeeded();
     const track = page.getByTestId(`lighting-row-track-${row.portable_id}`);
     await track.scrollIntoViewIfNeeded();
+    const initialDeviceBounds = await device.boundingBox();
+    expect(initialDeviceBounds).not.toBeNull();
+    await device.click({
+        trial: true,
+        position: { x: initialDeviceBounds!.width / 2, y: 45 },
+    });
     const deviceBounds = await device.boundingBox();
     const trackBounds = await track.boundingBox();
     expect(deviceBounds).not.toBeNull();
@@ -637,10 +643,14 @@ test('keeps intentional DIN gaps through reload and a JSON export/import round t
         await page
             .getByRole('button', { name: 'Add device to Row 02', exact: true })
             .click();
-        await expect(
-            page.getByRole('dialog', { name: 'Add device', exact: true }),
-        ).toBeVisible();
+        const addDeviceDialog = page.getByRole('dialog', {
+            name: 'Add device',
+            exact: true,
+            includeHidden: true,
+        });
+        await expect(addDeviceDialog).toBeVisible();
         await page.keyboard.press('Escape');
+        await expect(addDeviceDialog).toHaveCount(0);
         await dragComponentTo(page, rightId, secondRow, farRightX);
         await expect
             .poll(
