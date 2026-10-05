@@ -11,6 +11,7 @@ import type { DragEvent } from 'react';
 import ComponentNode from './component-node';
 import DuctNode from './duct-node';
 import EnclosureNode from './enclosure-node';
+import { ExternalCablingLayer } from './external-cabling-layer';
 import {
     canvasPointToMm,
     componentBounds,
@@ -55,6 +56,8 @@ export type PanelCanvasProps = {
     onZoomChange?: (zoom: number) => void;
     showGrid: boolean;
     showWires: boolean;
+    showExternalCabling?: boolean;
+    showCableLabels?: boolean;
     showLabels: boolean;
     layoutReadOnly?: boolean;
 };
@@ -62,7 +65,15 @@ export type PanelCanvasProps = {
 function selectionFromId(id: string): LightingSelection {
     const [type, portableId] = id.split(':');
 
-    return ['component', 'rail', 'duct', 'connection'].includes(type)
+    return [
+        'component',
+        'rail',
+        'duct',
+        'connection',
+        'cable_entry',
+        'cable_bundle',
+        'external_cable',
+    ].includes(type)
         ? {
               type: type as NonNullable<LightingSelection>['type'],
               id: portableId,
@@ -81,6 +92,8 @@ export function PanelCanvas({
     onZoomChange,
     showGrid,
     showWires,
+    showExternalCabling = true,
+    showCableLabels = true,
     showLabels,
     layoutReadOnly = true,
 }: PanelCanvasProps) {
@@ -227,7 +240,7 @@ export function PanelCanvas({
                     connection,
                     gridSize: layout.design.grid_size_mm,
                     snap: layout.design.snap_to_grid,
-                    showLabels,
+                    showLabels: showCableLabels,
                     onRoute: (points, commit) =>
                         onChange(
                             {
@@ -247,7 +260,7 @@ export function PanelCanvas({
                         ),
                 },
             })),
-        [layout, onChange, selected, showLabels, showWires],
+        [layout, onChange, selected, showCableLabels, showWires],
     );
 
     const fit = useCallback(
@@ -508,7 +521,16 @@ export function PanelCanvas({
                 zoomOnDoubleClick={false}
                 elevateNodesOnSelect={false}
                 proOptions={{ hideAttribution: true }}
-            />
+            >
+                <ExternalCablingLayer
+                    layout={layout}
+                    selection={selection}
+                    onSelectionChange={onSelectionChange}
+                    onChange={onChange}
+                    visible={showExternalCabling}
+                    showLabels={showCableLabels}
+                />
+            </ReactFlow>
             <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-24px)] rounded border bg-background/90 px-3 py-2 text-xs text-muted-foreground">
                 Connect terminals to add wiring · Scroll to zoom · Middle/right
                 drag to pan

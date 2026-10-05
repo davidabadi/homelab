@@ -100,7 +100,7 @@ class LightingDesignImporter
             }
             $design = $user->lightingDesigns()->create([...$document['design'], 'name' => $name]);
             $ids = [];
-            foreach (['rows', 'ducts', 'components', 'connections'] as $group) {
+            foreach (['rows', 'ducts', 'components', 'connections', ...LightingCablingLayout::GROUPS] as $group) {
                 foreach ($document[$group] as $item) {
                     $ids[$item['portable_id']] = (string) Str::uuid();
                 }
@@ -140,7 +140,33 @@ class LightingDesignImporter
                 ]);
             }
 
-            return $design->refresh()->loadCount(['components', 'rails', 'ducts', 'connections']);
+            $entryIds = [];
+            foreach ($document['cable_entries'] as $entry) {
+                $created = $design->cableEntries()->create([
+                    ...Arr::except($entry, 'portable_id'), 'portable_id' => $ids[$entry['portable_id']],
+                ]);
+                $entryIds[$entry['portable_id']] = $created->id;
+            }
+            $bundleIds = [];
+            foreach ($document['cable_bundles'] as $bundle) {
+                $created = $design->cableBundles()->create([
+                    ...Arr::except($bundle, ['portable_id', 'cable_entry_portable_id']),
+                    'portable_id' => $ids[$bundle['portable_id']],
+                    'cable_entry_id' => $entryIds[$bundle['cable_entry_portable_id']],
+                ]);
+                $bundleIds[$bundle['portable_id']] = $created->id;
+            }
+            foreach ($document['external_cables'] as $cable) {
+                $design->externalCables()->create([
+                    ...Arr::except($cable, ['portable_id', 'bundle_portable_id', 'cable_entry_portable_id', 'internal_component_portable_id']),
+                    'portable_id' => $ids[$cable['portable_id']],
+                    'bundle_id' => isset($cable['bundle_portable_id']) ? $bundleIds[$cable['bundle_portable_id']] : null,
+                    'cable_entry_id' => isset($cable['cable_entry_portable_id']) ? $entryIds[$cable['cable_entry_portable_id']] : null,
+                    'internal_component_id' => isset($cable['internal_component_portable_id']) ? $componentIds[$cable['internal_component_portable_id']] : null,
+                ]);
+            }
+
+            return $design->refresh()->loadCount([...LightingDesignPresenter::COUNT_RELATIONS, 'externalCables as unassigned_external_cables_count' => fn ($query) => $query->whereNull('internal_component_id')]);
         });
     }
 }

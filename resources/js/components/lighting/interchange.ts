@@ -22,6 +22,9 @@ export type LightingInterchangeDocument = {
     components: Record<string, unknown>[];
     ducts: Record<string, unknown>[];
     connections: Record<string, unknown>[];
+    cable_entries: Record<string, unknown>[];
+    cable_bundles: Record<string, unknown>[];
+    external_cables: Record<string, unknown>[];
 };
 
 export type CatalogResolution = {
@@ -99,6 +102,9 @@ export function parseLightingInterchange(
         'components',
         'ducts',
         'connections',
+        'cable_entries',
+        'cable_bundles',
+        'external_cables',
     ]) {
         const items = document[field];
 
@@ -107,7 +113,106 @@ export function parseLightingInterchange(
         }
     }
 
+    const ids = new Set<string>();
+    const groups = [
+        'rows',
+        'components',
+        'ducts',
+        'connections',
+        'cable_entries',
+        'cable_bundles',
+        'external_cables',
+    ];
+
+    for (const group of groups) {
+        for (const item of document[group] as Record<string, unknown>[]) {
+            if (
+                typeof item.portable_id !== 'string' ||
+                !item.portable_id ||
+                ids.has(item.portable_id)
+            ) {
+                throw new Error(
+                    `The ${group} array contains missing or duplicate portable IDs.`,
+                );
+            }
+
+            ids.add(item.portable_id);
+        }
+    }
+
+    const entries = new Set(
+        (document.cable_entries as Record<string, unknown>[]).map(
+            (item) => item.portable_id,
+        ),
+    );
+    const bundles = new Set(
+        (document.cable_bundles as Record<string, unknown>[]).map(
+            (item) => item.portable_id,
+        ),
+    );
+    const components = new Set(
+        (document.components as Record<string, unknown>[]).map(
+            (item) => item.portable_id,
+        ),
+    );
+
+    for (const bundle of document.cable_bundles as Record<string, unknown>[]) {
+        if (!entries.has(bundle.cable_entry_portable_id)) {
+            throw new Error(
+                'A cable bundle references an entry outside this document.',
+            );
+        }
+
+        validateRoutePoints(bundle.route_points, 'bundle trunk');
+    }
+
+    for (const cable of document.external_cables as Record<string, unknown>[]) {
+        const bundled = Boolean(cable.bundle_portable_id);
+
+        if (
+            bundled === Boolean(cable.cable_entry_portable_id) ||
+            (bundled
+                ? !bundles.has(cable.bundle_portable_id)
+                : !entries.has(cable.cable_entry_portable_id))
+        ) {
+            throw new Error(
+                'An external cable must reference either a bundle or a direct entry in this document.',
+            );
+        }
+
+        if (
+            Boolean(cable.internal_component_portable_id) !==
+                Boolean(cable.internal_terminal) ||
+            (cable.internal_component_portable_id &&
+                !components.has(cable.internal_component_portable_id))
+        ) {
+            throw new Error(
+                'An external cable has an invalid internal termination.',
+            );
+        }
+
+        validateRoutePoints(cable.branch_route_points, 'cable branch');
+    }
+
     return document as LightingInterchangeDocument;
+}
+
+function validateRoutePoints(points: unknown, label: string): void {
+    if (
+        !Array.isArray(points) ||
+        !points.every(
+            (point) =>
+                isObject(point) &&
+                typeof point.x_mm === 'number' &&
+                Number.isFinite(point.x_mm) &&
+                typeof point.y_mm === 'number' &&
+                Number.isFinite(point.y_mm),
+        )
+    ) {
+        throw new Error(
+            `The ${label} route must contain valid millimeter points.`,
+        );
+    }
 }
 
 export function catalogReferenceKey(reference: CatalogReference): string {

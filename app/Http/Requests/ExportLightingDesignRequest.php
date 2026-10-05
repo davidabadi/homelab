@@ -19,6 +19,6 @@ class ExportLightingDesignRequest extends FormRequest
     /** @return array<string, array<mixed>> */
     public function rules(): array
     {
-        return ['layout' => ['required', 'array:design,components,rails,ducts,connections']];
+        return ['layout' => ['required', 'array:design,components,rails,ducts,connections,cable_entries,cable_bundles,external_cables']];
     }
 }

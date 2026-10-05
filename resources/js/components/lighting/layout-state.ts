@@ -1,9 +1,10 @@
+import { refreshExternalCabling } from './external-cabling.ts';
 import {
     reconcileRailAttachments,
     rerouteConnections,
     snapComponentToRail,
     snapPoint,
-} from './geometry';
+} from './geometry.ts';
 import type {
     ComponentDefinition,
     LightingLayout,
@@ -46,6 +47,9 @@ export function layoutSnapshot(layout: LightingLayout): LightingSnapshot {
         rails: layout.rails,
         ducts: layout.ducts,
         connections: layout.connections,
+        cable_entries: layout.cable_entries,
+        cable_bundles: layout.cable_bundles,
+        external_cables: layout.external_cables,
     };
 }
 
@@ -152,8 +156,40 @@ export function deleteLayoutObjects(
             .filter((item) => item.type === 'connection')
             .map((item) => item.id),
     );
+    const deletedBundles = new Set(
+        selections
+            .filter((item) => item.type === 'cable_bundle')
+            .map((item) => item.id),
+    );
+    const deletedCables = new Set(
+        selections
+            .filter((item) => item.type === 'external_cable')
+            .map((item) => item.id),
+    );
+    const deletedEntries = new Set(
+        selections
+            .filter((item) => item.type === 'cable_entry')
+            .map((item) => item.id),
+    );
 
-    return {
+    if (
+        layout.cable_bundles.some(
+            (item) =>
+                deletedEntries.has(item.cable_entry_portable_id) &&
+                !deletedBundles.has(item.portable_id),
+        ) ||
+        layout.external_cables.some(
+            (item) =>
+                deletedEntries.has(item.cable_entry_portable_id ?? '') &&
+                !deletedCables.has(item.portable_id),
+        )
+    ) {
+        throw new Error(
+            'Reassign or remove the bundles and direct cables before deleting this entry.',
+        );
+    }
+
+    return refreshExternalCabling({
         ...layout,
         components: layout.components
             .filter(
@@ -176,7 +212,18 @@ export function deleteLayoutObjects(
                 !deletedComponents.has(connection.source_portable_id) &&
                 !deletedComponents.has(connection.target_portable_id),
         ),
-    };
+        cable_entries: layout.cable_entries.filter(
+            (item) => !deletedEntries.has(item.portable_id),
+        ),
+        cable_bundles: layout.cable_bundles.filter(
+            (item) => !deletedBundles.has(item.portable_id),
+        ),
+        external_cables: layout.external_cables.filter(
+            (item) =>
+                !deletedCables.has(item.portable_id) &&
+                !deletedBundles.has(item.bundle_portable_id ?? ''),
+        ),
+    });
 }
 
 export function duplicateLayoutObject(
@@ -266,6 +313,9 @@ export function duplicateLayoutObject(
                 : { layout, selection };
         }
         case 'connection':
+        case 'cable_entry':
+        case 'cable_bundle':
+        case 'external_cable':
             return { layout, selection };
     }
 }
@@ -273,5 +323,7 @@ export function duplicateLayoutObject(
 export function reconcileDefinitionPositions(
     layout: LightingLayout,
 ): LightingLayout {
-    return rerouteConnections(reconcileRailAttachments(layout));
+    return refreshExternalCabling(
+        rerouteConnections(reconcileRailAttachments(layout)),
+    );
 }

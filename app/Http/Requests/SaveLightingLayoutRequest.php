@@ -4,22 +4,31 @@ namespace App\Http\Requests;
 
 use App\Models\LightingComponentDefinition;
 use App\Models\LightingDesign;
+use App\Services\Lighting\LightingCablingLayout;
 use App\Services\Lighting\LightingDinPlacement;
 use App\Services\Lighting\LightingGeometry;
 use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class SaveLightingLayoutRequest extends FormRequest
 {
+    private ?string $snapshotMutationHash = null;
+
+    public function mutationHash(): ?string
+    {
+        return $this->snapshotMutationHash;
+    }
+
     protected function prepareForValidation(): void
     {
         if (is_array($this->input('design'))) {
             $this->merge(['design' => LightingGeometry::normalizeMillimeters($this->input('design'))]);
         }
-        foreach (['components', 'rails', 'ducts', 'connections'] as $group) {
+        foreach (['components', 'rails', 'ducts', 'connections', ...LightingCablingLayout::GROUPS] as $group) {
             if (! is_array($this->input($group))) {
                 continue;
             }
@@ -28,11 +37,13 @@ class SaveLightingLayoutRequest extends FormRequest
                     return $item;
                 }
                 $item = LightingGeometry::normalizeMillimeters($item);
-                if (isset($item['route_points']) && is_array($item['route_points'])) {
-                    $item['route_points'] = array_map(
-                        static fn (mixed $point): mixed => is_array($point) ? LightingGeometry::normalizeMillimeters($point) : $point,
-                        $item['route_points'],
-                    );
+                foreach (['route_points', 'branch_route_points'] as $field) {
+                    if (isset($item[$field]) && is_array($item[$field])) {
+                        $item[$field] = array_map(
+                            static fn (mixed $point): mixed => is_array($point) ? LightingGeometry::normalizeMillimeters($point) : $point,
+                            $item[$field],
+                        );
+                    }
                 }
 
                 return $item;
@@ -110,6 +121,51 @@ class SaveLightingLayoutRequest extends FormRequest
             'connections.*.route_points.*.y_mm' => $position,
             'connections.*.actual_length_mm' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
             'connections.*.notes' => ['nullable', 'string', 'max:10000'],
+            'cable_entries' => ['present', 'array', 'list', 'max:500'],
+            'cable_entries.*' => ['array:portable_id,label,side,offset_mm,span_mm,entry_type,notes,metadata'],
+            'cable_entries.*.portable_id' => ['required', 'uuid', 'distinct'],
+            'cable_entries.*.label' => ['required', 'string', 'max:255'],
+            'cable_entries.*.side' => ['required', Rule::in(['top', 'right', 'bottom', 'left'])],
+            'cable_entries.*.offset_mm' => ['required', 'numeric', 'between:0,1000000'],
+            'cable_entries.*.span_mm' => ['required', 'numeric', 'between:0.01,1000000'],
+            'cable_entries.*.entry_type' => ['required', Rule::in(['conduit', 'cable_gland', 'gland_plate', 'cable_tray', 'open_entry', 'other'])],
+            'cable_entries.*.notes' => ['nullable', 'string', 'max:10000'],
+            'cable_entries.*.metadata' => ['nullable', 'array'],
+            'cable_bundles' => ['present', 'array', 'list', 'max:1000'],
+            'cable_bundles.*' => ['array:portable_id,cable_entry_portable_id,name,external_location,cable_class,direction,display_color,planned_count,route_points,notes,metadata'],
+            'cable_bundles.*.portable_id' => ['required', 'uuid', 'distinct'],
+            'cable_bundles.*.cable_entry_portable_id' => ['required', 'uuid'],
+            'cable_bundles.*.name' => ['required', 'string', 'max:255'],
+            'cable_bundles.*.external_location' => ['nullable', 'string', 'max:255'],
+            'cable_bundles.*.cable_class' => ['required', Rule::in(LightingCablingLayout::CLASSES)],
+            'cable_bundles.*.direction' => ['required', Rule::in(LightingCablingLayout::DIRECTIONS)],
+            'cable_bundles.*.display_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'cable_bundles.*.planned_count' => ['nullable', 'integer', 'between:0,10000'],
+            'cable_bundles.*.route_points' => ['required', 'array', 'list', 'min:2', 'max:500'],
+            'cable_bundles.*.route_points.*' => ['array:x_mm,y_mm'],
+            'cable_bundles.*.route_points.*.x_mm' => $position,
+            'cable_bundles.*.route_points.*.y_mm' => $position,
+            'cable_bundles.*.notes' => ['nullable', 'string', 'max:10000'],
+            'cable_bundles.*.metadata' => ['nullable', 'array'],
+            'external_cables' => ['present', 'array', 'list', 'max:5000'],
+            'external_cables.*' => ['array:portable_id,bundle_portable_id,cable_entry_portable_id,label,cable_type,gauge,conductor_count,internal_component_portable_id,internal_terminal,branch_route_points,notes,metadata,cable_class,direction'],
+            'external_cables.*.portable_id' => ['required', 'uuid', 'distinct'],
+            'external_cables.*.bundle_portable_id' => ['present', 'nullable', 'uuid'],
+            'external_cables.*.cable_entry_portable_id' => ['present', 'nullable', 'uuid'],
+            'external_cables.*.label' => ['required', 'string', 'max:255'],
+            'external_cables.*.cable_type' => ['required', 'string', 'max:255'],
+            'external_cables.*.gauge' => ['nullable', 'string', 'max:100'],
+            'external_cables.*.conductor_count' => ['required', 'integer', 'between:1,1000'],
+            'external_cables.*.internal_component_portable_id' => ['present', 'nullable', 'uuid'],
+            'external_cables.*.internal_terminal' => ['present', 'nullable', 'string', 'max:100'],
+            'external_cables.*.branch_route_points' => ['present', 'array', 'list', 'max:500'],
+            'external_cables.*.branch_route_points.*' => ['array:x_mm,y_mm'],
+            'external_cables.*.branch_route_points.*.x_mm' => $position,
+            'external_cables.*.branch_route_points.*.y_mm' => $position,
+            'external_cables.*.cable_class' => ['present', 'nullable', Rule::in(LightingCablingLayout::CLASSES)],
+            'external_cables.*.direction' => ['present', 'nullable', Rule::in(LightingCablingLayout::DIRECTIONS)],
+            'external_cables.*.notes' => ['nullable', 'string', 'max:10000'],
+            'external_cables.*.metadata' => ['nullable', 'array'],
         ];
     }
 
@@ -122,23 +178,38 @@ class SaveLightingLayoutRequest extends FormRequest
                     return;
                 }
                 $portableIds = [];
-                foreach (['components', 'rails', 'ducts', 'connections'] as $group) {
+                foreach (['components', 'rails', 'ducts', 'connections', ...LightingCablingLayout::GROUPS] as $group) {
                     foreach ($this->input($group) as $index => $item) {
-                        if (isset($portableIds[$item['portable_id']])) {
+                        if (isset($portableIds[strtolower($item['portable_id'])])) {
                             $validator->errors()->add("{$group}.{$index}.portable_id", 'Object identifiers must be unique across the layout.');
                         }
-                        $portableIds[$item['portable_id']] = true;
+                        $portableIds[strtolower($item['portable_id'])] = true;
                     }
                 }
                 if ($validator->errors()->isNotEmpty()) {
                     return;
                 }
+                $this->snapshotMutationHash = hash('sha256', json_encode(Arr::only($validator->getData(), [
+                    'structured', 'design', 'components', 'rails', 'ducts', 'connections', ...LightingCablingLayout::GROUPS,
+                ]), JSON_THROW_ON_ERROR));
                 $components = collect($this->array('components'))->keyBy('portable_id');
                 $railIds = array_column($this->input('rails'), 'portable_id');
                 $rails = collect($this->array('rails'))->keyBy('portable_id');
                 $definitions = LightingComponentDefinition::query()->whereIn('id', collect([
                     ...$this->input('components'), ...$this->input('rails'), ...$this->input('ducts'),
                 ])->pluck('component_definition_id')->filter()->unique())->get()->keyBy('id');
+
+                $this->unassignRemovedComponents($validator);
+                foreach (['cable_bundles' => 'route_points', 'external_cables' => 'branch_route_points'] as $group => $field) {
+                    foreach ($this->input($group) as $index => $item) {
+                        if (! LightingCablingLayout::orthogonal($item[$field])) {
+                            $validator->errors()->add("{$group}.{$index}.{$field}", 'Cable route segments must be orthogonal.');
+                        }
+                    }
+                }
+                if ($validator->errors()->isNotEmpty()) {
+                    return;
+                }
 
                 if ($this->boolean('structured')) {
                     $this->normalizeRows($validator, $definitions);
@@ -150,6 +221,11 @@ class SaveLightingLayoutRequest extends FormRequest
                     $rails = collect($this->array('rails'))->keyBy('portable_id');
                 }
                 StoreLightingDesignRequest::validateMargins($validator, $this->input('design'), 'design.');
+                foreach (LightingCablingLayout::validate($validator->getData(), $definitions->map->toArray()->all()) as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $validator->errors()->add($field, $message);
+                    }
+                }
                 foreach (LightingDinPlacement::validateRows(array_values($this->array('rails')), array_values($this->array('components')), $definitions->all()) as $key => $messages) {
                     foreach ($messages as $message) {
                         $validator->errors()->add($key, $message);
@@ -225,6 +301,29 @@ class SaveLightingLayoutRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    private function unassignRemovedComponents(Validator $validator): void
+    {
+        $design = $this->user()->lightingDesigns()->findOrFail((int) $this->route('design'));
+        $componentIds = array_column($this->input('components'), 'portable_id');
+        $removedIds = $design->components()
+            ->whereNotIn('portable_id', array_column($this->input('components'), 'portable_id'))->pluck('portable_id')->all();
+        $replayedCableIds = $design->last_mutation_id === $this->input('mutation_id')
+            ? $design->externalCables()->whereNull('internal_component_id')->pluck('portable_id')->all() : [];
+        $cables = $this->array('external_cables');
+        foreach ($cables as &$cable) {
+            $componentId = $cable['internal_component_portable_id'] ?? null;
+            if ($componentId !== null && (in_array($componentId, $removedIds, true)
+                || (! in_array($componentId, $componentIds, true) && in_array($cable['portable_id'], $replayedCableIds, true)))) {
+                $cable['internal_component_portable_id'] = null;
+                $cable['internal_terminal'] = null;
+                $cable['branch_route_points'] = [];
+            }
+        }
+        unset($cable);
+        $this->merge(['external_cables' => $cables]);
+        $validator->setData([...$validator->getData(), 'external_cables' => $cables]);
     }
 
     /** @param Collection<int, LightingComponentDefinition> $definitions */

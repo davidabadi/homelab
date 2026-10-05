@@ -16,6 +16,7 @@ import {
     LightingApiError,
     downloadLightingJson,
 } from './api';
+import { defaultBundleRoute } from './external-cabling';
 import {
     moveLayoutObject,
     reconcileRailAttachments,
@@ -41,10 +42,13 @@ import {
 import { LightingSaveQueue } from './save-queue';
 import type { SaveAcknowledgement, SaveState } from './save-queue';
 import type {
+    CableBundle,
+    CableEntry,
     ComponentDefinition,
     DesignConnection,
     DesignDuct,
     DesignRail,
+    ExternalCable,
     LightingDesign,
     LightingLayout,
     LightingSelection,
@@ -75,6 +79,8 @@ export function useLightingEditor(designId: number) {
     const [showGrid, setShowGrid] = useState(false);
     const [showWires, setShowWires] = useState(true);
     const [showLabels, setShowLabels] = useState(true);
+    const [showExternalCabling, setShowExternalCabling] = useState(true);
+    const [showCableLabels, setShowCableLabels] = useState(true);
     const [leaveDialog, setLeaveDialog] = useState(false);
     const [busy, setBusy] = useState(false);
     const [exporting, setExporting] = useState(false);
@@ -314,6 +320,7 @@ export function useLightingEditor(designId: number) {
         committedRef.current = restored;
         setLayout(restored);
         setSelection(null);
+        setSelectedObjects([]);
         queueRef.current?.update(layoutSnapshot(restored), true);
     }, [history]);
 
@@ -341,49 +348,80 @@ export function useLightingEditor(designId: number) {
         committedRef.current = restored;
         setLayout(restored);
         setSelection(null);
+        setSelectedObjects([]);
         queueRef.current?.update(layoutSnapshot(restored), true);
     }, [history]);
 
-    const deleteSelection = useCallback(() => {
-        const current = layoutRef.current;
-        const objects = selectedObjects.length
-            ? selectedObjects
-            : selection
-              ? [selection]
-              : [];
+    const deleteSelection = useCallback(
+        (confirmed = false) => {
+            const current = layoutRef.current;
+            const objects = selectedObjects.length
+                ? selectedObjects
+                : selection
+                  ? [selection]
+                  : [];
 
-        if (!current || !objects.length) {
-            return;
-        }
+            if (!current || !objects.length) {
+                return;
+            }
 
-        if (
-            objects.some(
-                (object) =>
-                    object.type === 'rail' &&
-                    panelRowItems(current, object.id).some(
-                        (item) =>
-                            !objects.some(
-                                (selected) =>
-                                    selected.type === 'component' &&
-                                    selected.id === item.portable_id,
-                            ),
-                    ),
-            )
-        ) {
-            setOperationError(
-                'Only empty rows can be removed. Move or remove the devices first.',
-            );
+            if (
+                objects.some(
+                    (object) =>
+                        object.type === 'rail' &&
+                        panelRowItems(current, object.id).some(
+                            (item) =>
+                                !objects.some(
+                                    (selected) =>
+                                        selected.type === 'component' &&
+                                        selected.id === item.portable_id,
+                                ),
+                        ),
+                )
+            ) {
+                setOperationError(
+                    'Only empty rows can be removed. Move or remove the devices first.',
+                );
 
-            return;
-        }
+                return;
+            }
 
-        if (!changeLayout(deleteLayoutObjects(current, objects), true, true)) {
-            return;
-        }
+            if (
+                !confirmed &&
+                objects.some(
+                    (object) =>
+                        object.type === 'cable_bundle' &&
+                        current.external_cables.some(
+                            (cable) => cable.bundle_portable_id === object.id,
+                        ),
+                )
+            ) {
+                setOperationError(
+                    'Remove this bundle from its inspector to confirm deleting its member cables.',
+                );
 
-        setSelection(null);
-        setSelectedObjects([]);
-    }, [changeLayout, selectedObjects, selection]);
+                return;
+            }
+
+            let next: LightingLayout;
+
+            try {
+                next = deleteLayoutObjects(current, objects);
+            } catch (caught) {
+                setOperationError(lightingErrorMessage(caught));
+
+                return;
+            }
+
+            if (!changeLayout(next, true, true)) {
+                return;
+            }
+
+            setSelection(null);
+            setSelectedObjects([]);
+        },
+        [changeLayout, selectedObjects, selection],
+    );
 
     const duplicateSelection = useCallback(
         (id?: string) => {
@@ -651,6 +689,198 @@ export function useLightingEditor(designId: number) {
         }
     }
 
+    function addCableEntry(): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        const entry: CableEntry = {
+            portable_id: crypto.randomUUID(),
+            label: 'Cable entry',
+            side: 'top',
+            offset_mm: Math.max(0, current.design.width_mm / 2 - 20),
+            span_mm: Math.min(40, current.design.width_mm),
+            entry_type: 'open_entry',
+            notes: null,
+            metadata: {},
+        };
+
+        if (
+            !changeLayout(
+                {
+                    ...current,
+                    cable_entries: [...current.cable_entries, entry],
+                },
+                true,
+                true,
+            )
+        ) {
+            return false;
+        }
+
+        selectObject({ type: 'cable_entry', id: entry.portable_id });
+
+        return true;
+    }
+
+    function updateCableEntry(id: string, attributes: Partial<CableEntry>) {
+        const current = layoutRef.current;
+
+        if (current) {
+            changeLayout({
+                ...current,
+                cable_entries: current.cable_entries.map((item) =>
+                    item.portable_id === id ? { ...item, ...attributes } : item,
+                ),
+            });
+        }
+    }
+
+    function addCableBundle(entryId: string): boolean {
+        const current = layoutRef.current;
+        const entry = current?.cable_entries.find(
+            (item) => item.portable_id === entryId,
+        );
+
+        if (!current || !entry) {
+            return false;
+        }
+
+        const bundle: CableBundle = {
+            portable_id: crypto.randomUUID(),
+            cable_entry_portable_id: entryId,
+            name: 'Cable bundle',
+            external_location: null,
+            cable_class: 'other',
+            direction: 'mixed',
+            display_color: null,
+            planned_count: null,
+            route_points: defaultBundleRoute(entry, current.design),
+            notes: null,
+            metadata: {},
+        };
+
+        if (
+            !changeLayout(
+                {
+                    ...current,
+                    cable_bundles: [...current.cable_bundles, bundle],
+                },
+                true,
+                true,
+            )
+        ) {
+            return false;
+        }
+
+        selectObject({ type: 'cable_bundle', id: bundle.portable_id });
+
+        return true;
+    }
+
+    function updateCableBundle(id: string, attributes: Partial<CableBundle>) {
+        const current = layoutRef.current;
+
+        if (current) {
+            changeLayout({
+                ...current,
+                cable_bundles: current.cable_bundles.map((item) =>
+                    item.portable_id === id ? { ...item, ...attributes } : item,
+                ),
+            });
+        }
+    }
+
+    function addExternalCable(bundleId?: string, entryId?: string): boolean {
+        const current = layoutRef.current;
+
+        if (!current || (!bundleId && !entryId)) {
+            return false;
+        }
+
+        const cable: ExternalCable = {
+            portable_id: crypto.randomUUID(),
+            bundle_portable_id: bundleId ?? null,
+            cable_entry_portable_id: bundleId ? null : (entryId ?? null),
+            label: 'External cable',
+            cable_type: 'Field cable',
+            gauge: null,
+            conductor_count: 1,
+            internal_component_portable_id: null,
+            internal_terminal: null,
+            branch_route_points: [],
+            cable_class: bundleId ? null : 'other',
+            direction: bundleId ? null : 'mixed',
+            notes: null,
+            metadata: {},
+        };
+
+        if (
+            !changeLayout(
+                {
+                    ...current,
+                    external_cables: [...current.external_cables, cable],
+                },
+                true,
+                true,
+            )
+        ) {
+            return false;
+        }
+
+        selectObject({ type: 'external_cable', id: cable.portable_id });
+
+        return true;
+    }
+
+    function updateExternalCable(
+        id: string,
+        attributes: Partial<ExternalCable>,
+    ) {
+        const current = layoutRef.current;
+
+        if (current) {
+            changeLayout({
+                ...current,
+                external_cables: current.external_cables.map((item) => {
+                    if (item.portable_id !== id) {
+                        return item;
+                    }
+
+                    const next = { ...item, ...attributes };
+
+                    if (
+                        'bundle_portable_id' in attributes &&
+                        attributes.bundle_portable_id
+                    ) {
+                        next.cable_entry_portable_id = null;
+                        next.cable_class = null;
+                        next.direction = null;
+                    } else if (
+                        'cable_entry_portable_id' in attributes &&
+                        attributes.cable_entry_portable_id
+                    ) {
+                        next.bundle_portable_id = null;
+                        next.cable_class ??= 'other';
+                        next.direction ??= 'mixed';
+                    }
+
+                    if (
+                        'internal_component_portable_id' in attributes &&
+                        !attributes.internal_component_portable_id
+                    ) {
+                        next.internal_terminal = null;
+                        next.branch_route_points = [];
+                    }
+
+                    return next;
+                }),
+            });
+        }
+    }
+
     async function saveAsNewDesign() {
         const current = layoutRef.current;
 
@@ -703,7 +933,10 @@ export function useLightingEditor(designId: number) {
                     const empty =
                         recovery.components.length === 0 &&
                         recovery.ducts.length === 0 &&
-                        recovery.connections.length === 0;
+                        recovery.connections.length === 0 &&
+                        recovery.cable_entries.length === 0 &&
+                        recovery.cable_bundles.length === 0 &&
+                        recovery.external_cables.length === 0;
 
                     if (
                         empty &&
@@ -902,8 +1135,16 @@ export function useLightingEditor(designId: number) {
         setOperationError(null);
 
         try {
-            const { design, components, rails, ducts, connections } =
-                layoutSnapshot(current);
+            const {
+                design,
+                components,
+                rails,
+                ducts,
+                connections,
+                cable_entries,
+                cable_bundles,
+                external_cables,
+            } = layoutSnapshot(current);
             await downloadLightingJson(
                 exportMethod.url(designId),
                 structuredClone({
@@ -912,6 +1153,9 @@ export function useLightingEditor(designId: number) {
                     rails,
                     ducts,
                     connections,
+                    cable_entries,
+                    cable_bundles,
+                    external_cables,
                 }),
             );
         } catch (caught) {
@@ -1033,6 +1277,10 @@ export function useLightingEditor(designId: number) {
         setShowWires,
         showLabels,
         setShowLabels,
+        showExternalCabling,
+        setShowExternalCabling,
+        showCableLabels,
+        setShowCableLabels,
         canUndo: history.past.length > 0,
         canRedo: history.future.length > 0,
         undo,
@@ -1054,6 +1302,12 @@ export function useLightingEditor(designId: number) {
         updateRail,
         updateDuct,
         updateConnection,
+        addCableEntry,
+        updateCableEntry,
+        addCableBundle,
+        updateCableBundle,
+        addExternalCable,
+        updateExternalCable,
         duplicateSelection,
         deleteSelection,
         retrySave,

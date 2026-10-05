@@ -14,11 +14,11 @@ class LightingLayoutService
     /** @param array<string, mixed> $layout
      * @return array{save_version: int, mutation_id: string, updated_at: string|null}
      */
-    public function save(User $user, int $designId, array $layout): array
+    public function save(User $user, int $designId, array $layout, ?string $mutationHash = null): array
     {
-        return DB::transaction(function () use ($user, $designId, $layout): array {
+        return DB::transaction(function () use ($user, $designId, $layout, $mutationHash): array {
             $design = $user->lightingDesigns()->lockForUpdate()->findOrFail($designId);
-            $mutationHash = hash('sha256', json_encode(Arr::except($layout, ['base_version', 'mutation_id']), JSON_THROW_ON_ERROR));
+            $mutationHash ??= hash('sha256', json_encode(Arr::except($layout, ['base_version', 'mutation_id']), JSON_THROW_ON_ERROR));
 
             if ($design->last_mutation_id === $layout['mutation_id']) {
                 abort_unless($design->last_mutation_hash === $mutationHash, 409, 'A save identifier cannot be reused for different changes.');
@@ -82,7 +82,36 @@ class LightingLayoutService
                 );
             }
 
+            $entryIds = [];
+            foreach ($layout['cable_entries'] as $entryData) {
+                $entry = $design->cableEntries()->updateOrCreate(['portable_id' => $entryData['portable_id']], $entryData);
+                $entryIds[$entry->portable_id] = $entry->id;
+            }
+            $bundleIds = [];
+            foreach ($layout['cable_bundles'] as $bundleData) {
+                $bundle = $design->cableBundles()->updateOrCreate(['portable_id' => $bundleData['portable_id']], [
+                    ...Arr::except($bundleData, 'cable_entry_portable_id'),
+                    'cable_entry_id' => $entryIds[$bundleData['cable_entry_portable_id']],
+                ]);
+                $bundleIds[$bundle->portable_id] = $bundle->id;
+            }
+            foreach ($layout['external_cables'] as $cableData) {
+                $design->externalCables()->updateOrCreate(['portable_id' => $cableData['portable_id']], [
+                    ...Arr::except($cableData, ['bundle_portable_id', 'cable_entry_portable_id', 'internal_component_portable_id']),
+                    'bundle_id' => isset($cableData['bundle_portable_id']) ? $bundleIds[$cableData['bundle_portable_id']] : null,
+                    'cable_entry_id' => isset($cableData['cable_entry_portable_id']) ? $entryIds[$cableData['cable_entry_portable_id']] : null,
+                    'internal_component_id' => isset($cableData['internal_component_portable_id']) ? $componentIds[$cableData['internal_component_portable_id']] : null,
+                ]);
+            }
+
+            $design->externalCables()->whereNotIn('portable_id', array_column($layout['external_cables'], 'portable_id'))->delete();
+            $design->cableBundles()->whereNotIn('portable_id', array_column($layout['cable_bundles'], 'portable_id'))->delete();
+            $design->cableEntries()->whereNotIn('portable_id', array_column($layout['cable_entries'], 'portable_id'))->delete();
             $design->connections()->whereNotIn('portable_id', array_column($layout['connections'], 'portable_id'))->delete();
+            $removedComponentIds = $design->components()->whereNotIn('portable_id', array_column($layout['components'], 'portable_id'))->pluck('id');
+            $design->externalCables()->whereIn('internal_component_id', $removedComponentIds)->update([
+                'internal_component_id' => null, 'internal_terminal' => null, 'branch_route_points' => '[]',
+            ]);
             $design->components()->whereNotIn('portable_id', array_column($layout['components'], 'portable_id'))->delete();
             $design->ducts()->whereNotIn('portable_id', array_column($layout['ducts'], 'portable_id'))->delete();
             $design->rails()->whereNotIn('portable_id', array_column($layout['rails'], 'portable_id'))->delete();
@@ -107,7 +136,7 @@ class LightingLayoutService
             $copy = $user->lightingDesigns()->create($attributes);
             $idMap = [];
 
-            foreach (['rails', 'ducts', 'components', 'connections'] as $group) {
+            foreach (['rails', 'ducts', 'components', 'connections', ...LightingCablingLayout::GROUPS] as $group) {
                 foreach ($snapshot[$group] as &$item) {
                     $oldId = $item['portable_id'];
                     $item['portable_id'] = (string) Str::uuid();
@@ -127,13 +156,29 @@ class LightingLayoutService
                 $connection['target_portable_id'] = $idMap[$connection['target_portable_id']];
             }
             unset($connection);
+            foreach ($snapshot['cable_bundles'] as &$bundle) {
+                $bundle['cable_entry_portable_id'] = $idMap[$bundle['cable_entry_portable_id']];
+                $bundle['metadata'] = (array) $bundle['metadata'];
+            }
+            unset($bundle);
+            foreach ($snapshot['cable_entries'] as &$entry) {
+                $entry['metadata'] = (array) $entry['metadata'];
+            }
+            unset($entry);
+            foreach ($snapshot['external_cables'] as &$cable) {
+                foreach (['bundle_portable_id', 'cable_entry_portable_id', 'internal_component_portable_id'] as $reference) {
+                    $cable[$reference] = isset($cable[$reference]) ? $idMap[$cable[$reference]] : null;
+                }
+                $cable['metadata'] = (array) $cable['metadata'];
+            }
+            unset($cable);
 
             $this->save($user, $copy->id, [
                 'base_version' => 0, 'mutation_id' => (string) Str::uuid(),
-                'design' => $attributes, ...Arr::only($snapshot, ['rails', 'ducts', 'components', 'connections']),
+                'design' => $attributes, ...Arr::only($snapshot, ['rails', 'ducts', 'components', 'connections', ...LightingCablingLayout::GROUPS]),
             ]);
 
-            return $copy->fresh()->loadCount(['components', 'rails', 'ducts', 'connections']);
+            return $copy->fresh()->loadCount([...LightingDesignPresenter::COUNT_RELATIONS, 'externalCables as unassigned_external_cables_count' => fn ($query) => $query->whereNull('internal_component_id')]);
         });
     }
 

@@ -108,6 +108,212 @@ function readLayout(page: Page, designId: number): Promise<LightingLayout> {
     return api<LightingLayout>(page, `/api/designs/${designId}`);
 }
 
+async function editCablingField(
+    page: Page,
+    label: string,
+    value: string,
+): Promise<void> {
+    await inspector(page).getByLabel(label, { exact: true }).fill(value);
+    await inspector(page).getByLabel(label, { exact: true }).press('Tab');
+}
+
+async function openCablingDialog(page: Page): Promise<Locator> {
+    await page.getByRole('button', { name: 'Panel menu', exact: true }).click();
+    await page
+        .getByRole('menuitem', { name: 'External cabling', exact: true })
+        .click();
+    const dialog = page.getByRole('dialog', {
+        name: 'External cabling',
+        exact: true,
+    });
+    await expect(dialog).toBeVisible();
+
+    return dialog;
+}
+
+async function selectCablingObject(
+    page: Page,
+    portableId: string,
+): Promise<void> {
+    const dialog = await openCablingDialog(page);
+    await dialog.getByTestId(`lighting-cabling-item-${portableId}`).click();
+    await expect(dialog).toBeHidden();
+}
+
+async function addCableEntry(
+    page: Page,
+    designId: number,
+    label: string,
+    side: string,
+    offset: number,
+): Promise<string> {
+    await page.getByRole('button', { name: 'Panel menu', exact: true }).click();
+    await page
+        .getByRole('menuitem', { name: 'Add cable entry', exact: true })
+        .click();
+    await editCablingField(page, 'Entry label', label);
+    await inspector(page)
+        .getByLabel('Enclosure side', { exact: true })
+        .selectOption(side);
+    await editCablingField(page, 'Opening span (mm)', '20');
+    await editCablingField(page, 'Offset (mm)', String(offset));
+    await inspector(page)
+        .getByLabel('Entry type', { exact: true })
+        .selectOption('conduit');
+    await expect
+        .poll(async () =>
+            (await readLayout(page, designId)).cable_entries.find(
+                (entry) => entry.label === label,
+            ),
+        )
+        .toMatchObject({
+            side,
+            offset_mm: offset,
+            span_mm: 20,
+            entry_type: 'conduit',
+        });
+
+    return (await readLayout(page, designId)).cable_entries.find(
+        (entry) => entry.label === label,
+    )!.portable_id;
+}
+
+async function addCableBundle(
+    page: Page,
+    designId: number,
+    name: string,
+    cableClass: string,
+    direction: string,
+    location: string,
+    plannedCount: number,
+): Promise<string> {
+    await inspector(page)
+        .getByRole('button', { name: 'Add bundle', exact: true })
+        .click();
+    await editCablingField(page, 'Bundle name', name);
+    await editCablingField(page, 'External location', location);
+    await inspector(page)
+        .getByLabel('Cable class', { exact: true })
+        .selectOption(cableClass);
+    await inspector(page)
+        .getByLabel('Direction', { exact: true })
+        .selectOption(direction);
+    await editCablingField(page, 'Planned cables', String(plannedCount));
+    await expect
+        .poll(
+            async () =>
+                (await readLayout(page, designId)).cable_bundles.find(
+                    (bundle) => bundle.name === name,
+                )?.planned_count,
+        )
+        .toBe(plannedCount);
+
+    return (await readLayout(page, designId)).cable_bundles.find(
+        (bundle) => bundle.name === name,
+    )!.portable_id;
+}
+
+async function addExternalCable(
+    page: Page,
+    designId: number,
+    bundleId: string,
+    label: string,
+    cableType: string,
+    componentId?: string,
+    terminal?: string,
+): Promise<string> {
+    await selectCablingObject(page, bundleId);
+    await inspector(page)
+        .getByRole('button', { name: 'Add cable', exact: true })
+        .click();
+    await editCablingField(page, 'Cable label', label);
+    await editCablingField(page, 'Cable type', cableType);
+
+    if (componentId && terminal) {
+        await inspector(page)
+            .getByLabel('Internal component', { exact: true })
+            .selectOption(componentId);
+        await inspector(page)
+            .getByLabel('Internal terminal', { exact: true })
+            .selectOption(terminal);
+    }
+
+    await expect
+        .poll(async () =>
+            (await readLayout(page, designId)).external_cables.find(
+                (cable) => cable.label === label,
+            ),
+        )
+        .toMatchObject({
+            cable_type: cableType,
+            bundle_portable_id: bundleId,
+            internal_component_portable_id: componentId ?? null,
+            internal_terminal: terminal ?? null,
+        });
+
+    return (await readLayout(page, designId)).external_cables.find(
+        (cable) => cable.label === label,
+    )!.portable_id;
+}
+
+function physicalExternalCabling(layout: LightingLayout) {
+    return {
+        entries: layout.cable_entries.map((entry) => ({
+            ...entry,
+            portable_id: undefined,
+        })),
+        bundles: layout.cable_bundles.map(
+            ({ cable_entry_portable_id, ...bundle }) => ({
+                ...bundle,
+                portable_id: undefined,
+                entry: layout.cable_entries.find(
+                    (entry) => entry.portable_id === cable_entry_portable_id,
+                )?.label,
+            }),
+        ),
+        cables: layout.external_cables.map(
+            ({
+                bundle_portable_id,
+                cable_entry_portable_id,
+                internal_component_portable_id,
+                ...cable
+            }) => ({
+                ...cable,
+                portable_id: undefined,
+                bundle:
+                    layout.cable_bundles.find(
+                        (bundle) => bundle.portable_id === bundle_portable_id,
+                    )?.name ?? null,
+                entry:
+                    layout.cable_entries.find(
+                        (entry) =>
+                            entry.portable_id === cable_entry_portable_id,
+                    )?.label ?? null,
+                component: layout.components
+                    .filter(
+                        (component) =>
+                            component.portable_id ===
+                            internal_component_portable_id,
+                    )
+                    .map((component) => {
+                        const definition = layout.definitions.find(
+                            (item) =>
+                                item.id === component.component_definition_id,
+                        )!;
+
+                        return {
+                            catalog_family_id: definition.catalog_family_id,
+                            revision: definition.revision,
+                            custom_label: component.custom_label,
+                            x_mm: component.x_mm,
+                            y_mm: component.y_mm,
+                        };
+                    }),
+            }),
+        ),
+    };
+}
+
 async function cleanupDesigns(page: Page, prefix: string): Promise<void> {
     const response = await api<{ designs: { id: number; name: string }[] }>(
         page,
@@ -271,6 +477,38 @@ async function dragComponentTo(
     }
 }
 
+async function dragCablingHandle(
+    page: Page,
+    handle: Locator,
+    delta: { x: number; y: number },
+    preview: () => Promise<void>,
+    cancel = false,
+): Promise<void> {
+    await handle.scrollIntoViewIfNeeded();
+    await handle.click({ trial: true });
+    const bounds = await handle.boundingBox();
+    expect(bounds).not.toBeNull();
+    const origin = {
+        x: bounds!.x + bounds!.width / 2,
+        y: bounds!.y + bounds!.height / 2,
+    };
+    await page.mouse.move(origin.x, origin.y);
+    await page.mouse.down();
+
+    try {
+        await page.mouse.move(origin.x + delta.x, origin.y + delta.y, {
+            steps: 20,
+        });
+        await preview();
+
+        if (cancel) {
+            await page.keyboard.press('Escape');
+        }
+    } finally {
+        await page.mouse.up();
+    }
+}
+
 async function exportDesign(page: Page): Promise<{
     path: string;
     document: LightingInterchangeDocument;
@@ -391,6 +629,600 @@ async function openRowOptions(page: Page, rowId: string): Promise<void> {
         .getByRole('button', { name: /Row \d+ options/ })
         .click();
 }
+
+test('documents external bundles, follows a growing enclosure, and preserves cabling through JSON import', async ({
+    context,
+    page,
+}, testInfo) => {
+    test.setTimeout(180_000);
+    const name = `External cabling E2E ${randomUUID()}`;
+    await openLighting(context, page);
+
+    try {
+        const designId = await createDesign(page, name);
+        const initial = await readLayout(page, designId);
+        const supplyId = await placeComponent(
+            page,
+            designId,
+            'Generic 24V DIN power supply (sample)',
+        );
+        const relayId = await placeComponent(
+            page,
+            designId,
+            'Shelly Pro 4PM (V2)',
+        );
+        const dimmerId = await placeComponent(
+            page,
+            designId,
+            'Shelly Pro Dimmer 2PM',
+            orderedRows(initial)[1].portable_id,
+        );
+
+        const bottomEntry = await addCableEntry(
+            page,
+            designId,
+            'AC mains',
+            'bottom',
+            20,
+        );
+        const acBundle = await addCableBundle(
+            page,
+            designId,
+            'AC Feed',
+            'line_voltage',
+            'incoming',
+            'Electrical panel',
+            1,
+        );
+        await addExternalCable(
+            page,
+            designId,
+            acBundle,
+            'Power supply AC',
+            'AC feed',
+            supplyId,
+            'L',
+        );
+
+        await addCableEntry(page, designId, 'Keypads', 'top', 260);
+        const keypadBundle = await addCableBundle(
+            page,
+            designId,
+            'Keypads — Rooms',
+            'low_voltage_control',
+            'incoming',
+            'Bedrooms and studio',
+            8,
+        );
+
+        for (let index = 0; index < 8; index++) {
+            await addExternalCable(
+                page,
+                designId,
+                keypadBundle,
+                `Room keypad ${index + 1}`,
+                'Control cable',
+                index < 4 ? relayId : undefined,
+                index < 4 ? `S${index + 1}` : undefined,
+            );
+        }
+
+        const networkEntry = await addCableEntry(
+            page,
+            designId,
+            'Network rack',
+            'left',
+            110,
+        );
+        const networkBundle = await addCableBundle(
+            page,
+            designId,
+            'Network',
+            'data',
+            'incoming',
+            'Network rack',
+            1,
+        );
+        await addExternalCable(
+            page,
+            designId,
+            networkBundle,
+            'Controller Ethernet',
+            'Cat6',
+            relayId,
+            'LAN',
+        );
+
+        await addCableEntry(page, designId, 'Lighting loads', 'top', 40);
+        const loadsBundle = await addCableBundle(
+            page,
+            designId,
+            'Lighting Loads',
+            'line_voltage',
+            'outgoing',
+            'Living areas',
+            2,
+        );
+        await addExternalCable(
+            page,
+            designId,
+            loadsBundle,
+            'Living ceiling',
+            'Lighting circuit',
+            dimmerId,
+            'O1',
+        );
+        await addExternalCable(
+            page,
+            designId,
+            loadsBundle,
+            'Dining chandelier',
+            'Lighting circuit',
+            dimmerId,
+            'O2',
+        );
+
+        const defined = await readLayout(page, designId);
+        expect(defined.cable_entries).toHaveLength(4);
+        expect(defined.cable_bundles).toHaveLength(4);
+        expect(defined.external_cables).toHaveLength(12);
+        expect(
+            defined.external_cables.filter(
+                (cable) => cable.internal_component_portable_id === null,
+            ),
+        ).toHaveLength(4);
+        expect(
+            defined.cable_bundles.find(
+                (bundle) => bundle.portable_id === keypadBundle,
+            )?.planned_count,
+        ).toBe(8);
+
+        await page
+            .getByRole('button', { name: 'Panel menu', exact: true })
+            .click();
+        await page
+            .getByRole('menuitem', { name: 'Wiring view', exact: true })
+            .click();
+        await expect(
+            page.getByTestId(`lighting-bundle-trunk-${keypadBundle}`),
+        ).toHaveCount(1);
+        await expect(
+            page.getByTestId(`lighting-bundle-trunk-${keypadBundle}`),
+        ).toHaveAttribute('d', /^M.+L.+/);
+        await expect(
+            page.getByTestId(`lighting-bundle-trunk-${acBundle}`),
+        ).toHaveCount(1);
+        await expect(
+            page.getByTestId(`lighting-bundle-trunk-${acBundle}`),
+        ).toHaveAttribute('d', /^M.+L.+/);
+        await expect(
+            page.locator('path[data-testid^="lighting-external-cable-"]'),
+        ).toHaveCount(8);
+
+        await selectCablingObject(page, networkEntry);
+        const entryHandle = page.getByTestId(
+            `lighting-cable-entry-${networkEntry}`,
+        );
+        await dragCablingHandle(
+            page,
+            entryHandle,
+            { x: 0, y: 35 },
+            async () => {
+                await expect(entryHandle).not.toHaveAttribute(
+                    'data-y-mm',
+                    '120',
+                );
+            },
+        );
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).cable_entries.find(
+                        (entry) => entry.portable_id === networkEntry,
+                    )?.offset_mm,
+            )
+            .toBeGreaterThan(110);
+        const movedEntry = await readLayout(page, designId);
+        const networkOpening = movedEntry.cable_entries.find(
+            (entry) => entry.portable_id === networkEntry,
+        )!;
+        const movedTrunk = movedEntry.cable_bundles.find(
+            (bundle) => bundle.portable_id === networkBundle,
+        )!;
+        expect(networkOpening.side).toBe('left');
+        expect(movedTrunk.route_points[0]).toEqual({
+            x_mm: 0,
+            y_mm: networkOpening.offset_mm + networkOpening.span_mm / 2,
+        });
+        const originalNetwork = defined.cable_bundles.find(
+            (bundle) => bundle.portable_id === networkBundle,
+        )!;
+        expect(movedTrunk.route_points.at(-1)).toEqual(
+            originalNetwork.route_points.at(-1),
+        );
+        const networkCable = movedEntry.external_cables.find(
+            (cable) => cable.bundle_portable_id === networkBundle,
+        )!;
+        expect(networkCable.branch_route_points).toEqual(
+            defined.external_cables.find(
+                (cable) => cable.portable_id === networkCable.portable_id,
+            )!.branch_route_points,
+        );
+
+        await selectCablingObject(page, networkBundle);
+        const breakoutHandle = page.getByTestId(
+            `lighting-bundle-breakout-${networkBundle}`,
+        );
+        const trunkPath = page.getByTestId(
+            `lighting-bundle-trunk-${networkBundle}`,
+        );
+        const branchPath = page.locator(
+            `path[data-testid="lighting-external-cable-${networkCable.portable_id}"]`,
+        );
+        const beforeBreakout = movedTrunk.route_points.at(-1)!;
+        const beforeTrunkPath = await trunkPath.getAttribute('d');
+        const beforeBranchPath = await branchPath.getAttribute('d');
+        await dragCablingHandle(
+            page,
+            breakoutHandle,
+            { x: 80, y: 40 },
+            async () => {
+                await expect(trunkPath).not.toHaveAttribute(
+                    'd',
+                    beforeTrunkPath!,
+                );
+                await expect(branchPath).not.toHaveAttribute(
+                    'd',
+                    beforeBranchPath!,
+                );
+            },
+        );
+        await expect
+            .poll(async () => {
+                const end = (await readLayout(page, designId)).cable_bundles
+                    .find((bundle) => bundle.portable_id === networkBundle)
+                    ?.route_points.at(-1);
+
+                return Boolean(
+                    end &&
+                    end.x_mm > beforeBreakout.x_mm &&
+                    end.y_mm > beforeBreakout.y_mm,
+                );
+            })
+            .toBe(true);
+        const movedBreakout = await readLayout(page, designId);
+        const networkRoute = movedBreakout.cable_bundles.find(
+            (bundle) => bundle.portable_id === networkBundle,
+        )!.route_points;
+        expect(networkRoute[0]).toEqual(movedTrunk.route_points[0]);
+        const networkBranches = movedBreakout.external_cables.filter(
+            (cable) => cable.bundle_portable_id === networkBundle,
+        );
+        expect(networkBranches).toHaveLength(1);
+
+        for (const cable of networkBranches) {
+            expect(cable.branch_route_points[0]).toEqual(networkRoute.at(-1));
+            expect(cable.branch_route_points.at(-1)).toEqual(
+                networkCable.branch_route_points.at(-1),
+            );
+        }
+
+        const savedTrunkPath = await trunkPath.getAttribute('d');
+        const savedBranchPath = await branchPath.getAttribute('d');
+        await dragCablingHandle(
+            page,
+            breakoutHandle,
+            { x: 40, y: 25 },
+            async () => {
+                await expect(trunkPath).not.toHaveAttribute(
+                    'd',
+                    savedTrunkPath!,
+                );
+                await expect(branchPath).not.toHaveAttribute(
+                    'd',
+                    savedBranchPath!,
+                );
+            },
+            true,
+        );
+        await expect(trunkPath).toHaveAttribute('d', savedTrunkPath!);
+        await expect(branchPath).toHaveAttribute('d', savedBranchPath!);
+        expect(
+            physicalExternalCabling(await readLayout(page, designId)),
+        ).toEqual(physicalExternalCabling(movedBreakout));
+        await page.screenshot({
+            path: testInfo.outputPath('external-bundles-wiring.png'),
+        });
+
+        await page
+            .getByRole('button', { name: 'Wiring layers', exact: true })
+            .click();
+        await page
+            .getByRole('menuitemcheckbox', {
+                name: 'External cabling',
+                exact: true,
+            })
+            .click();
+        await expect(
+            page.getByTestId(`lighting-bundle-trunk-${acBundle}`),
+        ).toHaveCount(0);
+        await expect(
+            page.locator('path[data-testid^="lighting-external-cable-"]'),
+        ).toHaveCount(0);
+        await expect(
+            page.getByTestId(`lighting-cable-entry-${bottomEntry}`),
+        ).toBeVisible();
+        await page.keyboard.press('Escape');
+        await page
+            .getByRole('button', { name: 'Wiring layers', exact: true })
+            .click();
+        await page
+            .getByRole('menuitemcheckbox', {
+                name: 'External cabling',
+                exact: true,
+            })
+            .click();
+        await page.keyboard.press('Escape');
+        await expect(
+            page.locator('path[data-testid^="lighting-external-cable-"]'),
+        ).toHaveCount(8);
+        await page
+            .getByRole('button', { name: 'Panel builder', exact: true })
+            .click();
+
+        await page
+            .getByRole('button', { name: 'Add row', exact: true })
+            .click();
+        await expect
+            .poll(async () => (await readLayout(page, designId)).rails.length)
+            .toBe(3);
+        const expanded = await readLayout(page, designId);
+        expect(
+            expanded.cable_bundles.find(
+                (bundle) => bundle.portable_id === networkBundle,
+            )!.route_points,
+        ).toEqual(networkRoute);
+        expect(expanded.design.height_mm).toBeGreaterThan(
+            defined.design.height_mm,
+        );
+        const expandedAc = expanded.cable_bundles.find(
+            (bundle) => bundle.portable_id === acBundle,
+        )!;
+        expect(expandedAc.route_points[0]).toEqual({
+            x_mm: 30,
+            y_mm: expanded.design.height_mm,
+        });
+        expect(
+            expanded.cable_entries.find(
+                (entry) => entry.portable_id === bottomEntry,
+            )?.offset_mm,
+        ).toBe(20);
+        await expect(
+            page.getByTestId(`lighting-cable-entry-${bottomEntry}`),
+        ).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('external-entry-grown-panel.png'),
+        });
+
+        await page.reload();
+        await expect(
+            page.getByTestId(`lighting-cable-entry-${bottomEntry}`),
+        ).toBeVisible();
+        const reloaded = await readLayout(page, designId);
+        expect(physicalExternalCabling(reloaded)).toEqual(
+            physicalExternalCabling(expanded),
+        );
+        const exported = await exportDesign(page);
+        expect(exported.document.schema_version).toBe(1);
+        expect(exported.document.cable_entries).toHaveLength(4);
+        expect(exported.document.cable_bundles).toHaveLength(4);
+        expect(exported.document.external_cables).toHaveLength(12);
+
+        for (const cable of exported.document.external_cables) {
+            expect(cable).not.toHaveProperty('internal_component_id');
+            expect(cable).not.toHaveProperty('bundle_id');
+        }
+
+        await page
+            .getByRole('button', { name: 'Back to designs', exact: true })
+            .click();
+        await page
+            .getByRole('button', { name: 'Import Design', exact: true })
+            .click();
+        const dialog = page.getByRole('dialog', {
+            name: 'Import Design',
+            exact: true,
+        });
+        await dialog
+            .getByLabel('Design JSON file')
+            .setInputFiles(exported.path);
+        await expect(dialog).toContainText('All resolved');
+        await dialog
+            .getByRole('button', { name: 'Import new design', exact: true })
+            .click();
+        await expect(page).toHaveURL(/\/designs\/\d+$/);
+        const importedId = Number(
+            new URL(page.url()).pathname.split('/').at(-1),
+        );
+        expect(importedId).not.toBe(designId);
+        const imported = await readLayout(page, importedId);
+        expect(physicalExternalCabling(imported)).toEqual(
+            physicalExternalCabling(reloaded),
+        );
+        const oldIds = [
+            ...reloaded.cable_entries,
+            ...reloaded.cable_bundles,
+            ...reloaded.external_cables,
+        ].map((item) => item.portable_id);
+
+        for (const item of [
+            ...imported.cable_entries,
+            ...imported.cable_bundles,
+            ...imported.external_cables,
+        ]) {
+            expect(oldIds).not.toContain(item.portable_id);
+        }
+
+        await page.screenshot({
+            path: testInfo.outputPath('external-cabling-imported-panel.png'),
+        });
+    } finally {
+        await cleanupDesigns(page, name);
+    }
+});
+
+test('clears cabling selections on undo and redo and retains standalone cables when devices are deleted', async ({
+    context,
+    page,
+}) => {
+    test.setTimeout(90_000);
+    const name = `Cabling lifecycle E2E ${randomUUID()}`;
+    await openLighting(context, page);
+
+    try {
+        const designId = await createDesign(page, name);
+        const supplyId = await placeComponent(
+            page,
+            designId,
+            'Generic 24V DIN power supply (sample)',
+        );
+        const entryId = await addCableEntry(
+            page,
+            designId,
+            'Supply entry',
+            'top',
+            30,
+        );
+        await inspector(page)
+            .getByRole('button', { name: 'Add standalone cable', exact: true })
+            .click();
+        await editCablingField(page, 'Cable label', 'Supply field cable');
+        await inspector(page)
+            .getByLabel('Cable class', { exact: true })
+            .selectOption('line_voltage');
+        await inspector(page)
+            .getByLabel('Direction', { exact: true })
+            .selectOption('incoming');
+        await inspector(page)
+            .getByLabel('Internal component', { exact: true })
+            .selectOption(supplyId);
+        await inspector(page)
+            .getByLabel('Internal terminal', { exact: true })
+            .selectOption('L');
+        await expect
+            .poll(
+                async () => (await readLayout(page, designId)).external_cables,
+            )
+            .toEqual([
+                expect.objectContaining({
+                    label: 'Supply field cable',
+                    bundle_portable_id: null,
+                    cable_entry_portable_id: entryId,
+                    cable_class: 'line_voltage',
+                    direction: 'incoming',
+                    internal_component_portable_id: supplyId,
+                    internal_terminal: 'L',
+                }),
+            ]);
+        const assigned = await readLayout(page, designId);
+        const cableId = assigned.external_cables[0].portable_id;
+        expect(assigned.cable_bundles).toHaveLength(0);
+        expect(
+            assigned.external_cables[0].branch_route_points.length,
+        ).toBeGreaterThan(1);
+        expect(assigned.external_cables[0].branch_route_points[0]).toEqual({
+            x_mm: 40,
+            y_mm: 0,
+        });
+        await expect(
+            inspector(page).getByLabel('Cable origin', { exact: true }),
+        ).toHaveValue(`entry:${entryId}`);
+
+        await editCablingField(page, 'Cable label', 'Renamed field cable');
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).external_cables[0]
+                        ?.label,
+            )
+            .toBe('Renamed field cable');
+
+        async function expectUnselectedCableRetained(
+            label: string,
+        ): Promise<void> {
+            await expect(inspector(page)).toBeHidden();
+            await page.keyboard.press('Delete');
+            const dialog = await openCablingDialog(page);
+            await expect(
+                dialog.getByTestId(`lighting-cabling-item-${cableId}`),
+            ).toBeVisible();
+            await page.keyboard.press('Escape');
+            await expect(dialog).toBeHidden();
+            await expect
+                .poll(
+                    async () =>
+                        (await readLayout(page, designId)).external_cables.find(
+                            (cable) => cable.portable_id === cableId,
+                        )?.label,
+                )
+                .toBe(label);
+        }
+
+        await page
+            .getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true })
+            .click();
+        await expectUnselectedCableRetained('Supply field cable');
+        await selectCablingObject(page, cableId);
+        await page
+            .getByRole('button', { name: 'Redo (Ctrl+Shift+Z)', exact: true })
+            .click();
+        await expectUnselectedCableRetained('Renamed field cable');
+
+        await selectCablingObject(page, entryId);
+        await expect(
+            inspector(page).getByRole('button', {
+                name: 'Delete entry',
+                exact: true,
+            }),
+        ).toBeDisabled();
+        await page.keyboard.press('Delete');
+        await expect(
+            page.getByTestId(`lighting-cable-entry-${entryId}`),
+        ).toBeVisible();
+        await componentNode(page, supplyId).click();
+        await inspector(page)
+            .getByRole('button', { name: 'Delete device', exact: true })
+            .click();
+        await expect
+            .poll(
+                async () => (await readLayout(page, designId)).external_cables,
+            )
+            .toEqual([
+                expect.objectContaining({
+                    portable_id: cableId,
+                    label: 'Renamed field cable',
+                    bundle_portable_id: null,
+                    cable_entry_portable_id: entryId,
+                    cable_class: 'line_voltage',
+                    direction: 'incoming',
+                    internal_component_portable_id: null,
+                    internal_terminal: null,
+                    branch_route_points: [],
+                }),
+            ]);
+        expect((await readLayout(page, designId)).components).toHaveLength(0);
+        await page.reload();
+        await selectCablingObject(page, cableId);
+        await expect(
+            inspector(page).getByLabel('Internal component', { exact: true }),
+        ).toHaveValue('');
+        await expect(
+            inspector(page).getByLabel('Cable origin', { exact: true }),
+        ).toHaveValue(`entry:${entryId}`);
+    } finally {
+        await cleanupDesigns(page, name);
+    }
+});
 
 test('arranges devices on three rows, reloads, and duplicates an independent panel', async ({
     context,

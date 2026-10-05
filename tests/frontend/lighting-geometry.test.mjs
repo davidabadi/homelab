@@ -124,6 +124,9 @@ function layout() {
                 ),
             },
         ],
+        cable_entries: [],
+        cable_bundles: [],
+        external_cables: [],
     };
 }
 

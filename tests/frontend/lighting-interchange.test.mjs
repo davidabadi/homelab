@@ -19,6 +19,9 @@ function exportDocument(overrides = {}) {
         ],
         ducts: [],
         connections: [],
+        cable_entries: [],
+        cable_bundles: [],
+        external_cables: [],
         ...overrides,
     };
 }
@@ -95,6 +98,9 @@ test('rejects absent layout arrays and invalid objects within them', () => {
         'components',
         'ducts',
         'connections',
+        'cable_entries',
+        'cable_bundles',
+        'external_cables',
     ]) {
         for (const value of [undefined, {}, [null], ['device']]) {
             const document = exportDocument({ [field]: value });
@@ -131,4 +137,115 @@ test('names the imported copy and preserves the suffix for long names', () => {
     );
     assert.equal(importedDesignName('x'.repeat(255)).length, 255);
     assert.ok(importedDesignName('x'.repeat(255)).endsWith(' (imported)'));
+});
+
+function cabledDocument() {
+    return exportDocument({
+        cable_entries: [
+            {
+                portable_id: 'entry-1',
+                side: 'bottom',
+                offset_mm: 20,
+                span_mm: 40,
+            },
+        ],
+        cable_bundles: [
+            {
+                portable_id: 'bundle-1',
+                cable_entry_portable_id: 'entry-1',
+                route_points: [
+                    { x_mm: 40, y_mm: 320 },
+                    { x_mm: 40, y_mm: 280 },
+                ],
+            },
+        ],
+        external_cables: [
+            {
+                portable_id: 'cable-1',
+                bundle_portable_id: 'bundle-1',
+                cable_entry_portable_id: null,
+                internal_component_portable_id: 'device-1',
+                internal_terminal: 'L',
+                branch_route_points: [
+                    { x_mm: 40, y_mm: 280 },
+                    { x_mm: 40, y_mm: 45 },
+                ],
+            },
+            {
+                portable_id: 'cable-2',
+                bundle_portable_id: null,
+                cable_entry_portable_id: 'entry-1',
+                internal_component_portable_id: null,
+                internal_terminal: null,
+                branch_route_points: [],
+            },
+        ],
+    });
+}
+
+test('parses bundled assigned and direct unassigned cables without changing portable references', () => {
+    const document = cabledDocument();
+    assert.deepEqual(
+        parseLightingInterchange(JSON.stringify(document)),
+        document,
+    );
+});
+
+test('rejects cabling references outside the portable document graph', () => {
+    for (const change of [
+        (document) => {
+            document.cable_bundles[0].cable_entry_portable_id = 'foreign-entry';
+        },
+        (document) => {
+            document.external_cables[0].bundle_portable_id = 'foreign-bundle';
+        },
+        (document) => {
+            document.external_cables[1].cable_entry_portable_id =
+                'foreign-entry';
+        },
+        (document) => {
+            document.external_cables[0].internal_component_portable_id =
+                'foreign-component';
+        },
+        (document) => {
+            document.external_cables[0].cable_entry_portable_id = 'entry-1';
+        },
+        (document) => {
+            document.external_cables[0].internal_terminal = null;
+        },
+        (document) => {
+            document.external_cables[1].cable_entry_portable_id = null;
+        },
+    ]) {
+        const document = cabledDocument();
+        change(document);
+        assert.throws(
+            () => parseLightingInterchange(JSON.stringify(document)),
+            /references|reference|termination/,
+        );
+    }
+});
+
+test('rejects portable ID collisions between internal and external layout objects', () => {
+    const document = cabledDocument();
+    document.external_cables[0].portable_id = document.rows[0].portable_id;
+    assert.throws(
+        () => parseLightingInterchange(JSON.stringify(document)),
+        /duplicate portable IDs/,
+    );
+});
+
+test('rejects malformed trunk and branch point shapes before import review', () => {
+    for (const field of ['route_points', 'branch_route_points']) {
+        const document = cabledDocument();
+        const target =
+            field === 'route_points'
+                ? document.cable_bundles[0]
+                : document.external_cables[0];
+        target[field] = [{ x_mm: 40, y_mm: '280' }];
+        assert.throws(
+            () => parseLightingInterchange(JSON.stringify(document)),
+            /valid millimeter points/,
+        );
+    }
 });

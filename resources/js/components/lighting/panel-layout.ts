@@ -5,6 +5,7 @@ import {
     nearestDinPosition,
     nudgeDinPosition,
 } from './din-placement.ts';
+import { refreshExternalCabling } from './external-cabling.ts';
 import { rerouteConnections } from './geometry.ts';
 import type {
     ComponentDefinition,
@@ -230,23 +231,25 @@ export function normalizePanelLayout(layout: LightingLayout): LightingLayout {
         },
     );
 
-    return rerouteConnections({
-        ...layout,
-        design: {
-            ...layout.design,
-            height_mm:
-                Math.round(
-                    (layout.design.margin_top_mm +
-                        Math.max(1, rows.length) * pitch +
-                        layout.design.margin_bottom_mm) *
-                        100,
-                ) / 100,
-        },
-        rails,
-        components: layout.components.map(
-            (item) => components.get(item.portable_id) ?? item,
-        ),
-    });
+    return refreshExternalCabling(
+        rerouteConnections({
+            ...layout,
+            design: {
+                ...layout.design,
+                height_mm:
+                    Math.round(
+                        (layout.design.margin_top_mm +
+                            Math.max(1, rows.length) * pitch +
+                            layout.design.margin_bottom_mm) *
+                            100,
+                    ) / 100,
+            },
+            rails,
+            components: layout.components.map(
+                (item) => components.get(item.portable_id) ?? item,
+            ),
+        }),
+    );
 }
 
 export function insertPanelRow(

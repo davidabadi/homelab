@@ -60,7 +60,7 @@ function lightingInterchangeFixture(): array
     ]);
     $snapshot = app(LightingDesignPresenter::class)->layout($design);
     $layout = [
-        ...Arr::only($snapshot, ['rails', 'components', 'ducts', 'connections']),
+        ...Arr::only($snapshot, ['rails', 'components', 'ducts', 'connections', 'cable_entries', 'cable_bundles', 'external_cables']),
         'design' => Arr::only($snapshot['design'], LightingDesign::EDITABLE_FIELDS),
     ];
     $document = app(LightingDesignExporter::class)->document($layout);

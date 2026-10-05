@@ -116,6 +116,6 @@ class LightingRowLayout
         }
         unset($connection);
 
-        return $layout;
+        return LightingCablingLayout::normalize($layout, $definitions->map->toArray()->all());
     }
 }

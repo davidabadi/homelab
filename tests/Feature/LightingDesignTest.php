@@ -137,7 +137,7 @@ it('duplicates full layouts with independent objects and shared immutable catalo
     $this->putJson(route('lighting.designs.layout.update', $copy), [
         'base_version' => $copy->save_version, 'mutation_id' => (string) Str::uuid(),
         'design' => Arr::only($copiedLayout['design'], LightingDesign::EDITABLE_FIELDS),
-        ...Arr::only($copiedLayout, ['components', 'rails', 'ducts', 'connections']),
+        ...Arr::only($copiedLayout, ['components', 'rails', 'ducts', 'connections', 'cable_entries', 'cable_bundles', 'external_cables']),
     ])->assertOk();
 
     expect($source->fresh()->x_mm)->toBe(50.0);

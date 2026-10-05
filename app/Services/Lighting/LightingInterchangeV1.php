@@ -103,7 +103,7 @@ class LightingInterchangeV1
         }
         $rules['catalog.*'] = ['array:'.implode(',', self::CATALOG_FIELDS)];
         $validator = Validator::make(['document' => $document], [
-            'document' => ['required', 'array:format,schema_version,exported_at,design,catalog,rows,components,ducts,connections'],
+            'document' => ['required', 'array:format,schema_version,exported_at,design,catalog,rows,components,ducts,connections,cable_entries,cable_bundles,external_cables'],
             ...array_combine(array_map(static fn (string $key): string => 'document.'.$key, array_keys($rules)), array_values($rules)),
         ]);
         $validator->validate();
@@ -126,7 +126,7 @@ class LightingInterchangeV1
         }
         $portableIds = [];
         $referencedCatalog = [];
-        foreach (['rows', 'components', 'ducts', 'connections'] as $group) {
+        foreach (['rows', 'components', 'ducts', 'connections', ...LightingCablingLayout::GROUPS] as $group) {
             foreach ($document[$group] as $index => $item) {
                 if (isset($portableIds[strtolower($item['portable_id'])])) {
                     $errors["document.{$group}.{$index}.portable_id"] = ['Object identifiers must be unique across the layout.'];
@@ -264,6 +264,7 @@ class LightingInterchangeV1
         foreach (LightingDinPlacement::validateRows($document['rows'], $mappedComponents, $definitions) as $field => $messages) {
             $errors['document.'.$field] = $messages;
         }
+        $errors = [...$errors, ...LightingCablingLayout::validate([...$document, 'components' => $mappedComponents], $definitions, 'document.')];
         foreach ($document['connections'] as $index => $connection) {
             foreach (['source', 'target'] as $endpoint) {
                 $component = $components[$connection["{$endpoint}_portable_id"]] ?? null;

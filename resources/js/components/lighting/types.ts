@@ -91,6 +91,57 @@ export type DesignConnection = {
     notes: string | null;
 };
 
+export type CableClass =
+    'line_voltage' | 'low_voltage_control' | 'data' | 'other';
+export type CableDirection = 'incoming' | 'outgoing' | 'mixed';
+export type CableEntry = {
+    portable_id: string;
+    label: string;
+    side: 'top' | 'right' | 'bottom' | 'left';
+    offset_mm: number;
+    span_mm: number;
+    entry_type:
+        | 'conduit'
+        | 'cable_gland'
+        | 'gland_plate'
+        | 'cable_tray'
+        | 'open_entry'
+        | 'other';
+    notes: string | null;
+    metadata: Record<string, unknown>;
+};
+
+export type CableBundle = {
+    portable_id: string;
+    cable_entry_portable_id: string;
+    name: string;
+    external_location: string | null;
+    cable_class: CableClass;
+    direction: CableDirection;
+    display_color: string | null;
+    planned_count: number | null;
+    route_points: MmPoint[];
+    notes: string | null;
+    metadata: Record<string, unknown>;
+};
+
+export type ExternalCable = {
+    portable_id: string;
+    bundle_portable_id: string | null;
+    cable_entry_portable_id: string | null;
+    label: string;
+    cable_type: string;
+    gauge: string | null;
+    conductor_count: number;
+    internal_component_portable_id: string | null;
+    internal_terminal: string | null;
+    branch_route_points: MmPoint[];
+    cable_class: CableClass | null;
+    direction: CableDirection | null;
+    notes: string | null;
+    metadata: Record<string, unknown>;
+};
+
 export type LightingLayout = {
     design: LightingDesign;
     definitions: ComponentDefinition[];
@@ -98,16 +149,30 @@ export type LightingLayout = {
     rails: DesignRail[];
     ducts: DesignDuct[];
     connections: DesignConnection[];
+    cable_entries: CableEntry[];
+    cable_bundles: CableBundle[];
+    external_cables: ExternalCable[];
 };
 
 export type LightingSelection = {
-    type: 'component' | 'rail' | 'duct' | 'connection';
+    type:
+        | 'component'
+        | 'rail'
+        | 'duct'
+        | 'connection'
+        | 'cable_entry'
+        | 'cable_bundle'
+        | 'external_cable';
     id: string;
 } | null;
 
 export type LightingDesignSummary = LightingDesign & {
     components_count: number;
     connections_count: number;
+    cable_entries_count: number;
+    cable_bundles_count: number;
+    external_cables_count: number;
+    unassigned_external_cables_count: number;
 };
 
 export type PanelCanvasApi = {

@@ -5,6 +5,9 @@ import type {
     DesignDuct,
     DesignRail,
     PlacedComponent,
+    CableEntry,
+    CableBundle,
+    ExternalCable,
 } from './types';
 
 export type DesignBomProps = {
@@ -13,6 +16,9 @@ export type DesignBomProps = {
     ducts: DesignDuct[];
     connections: DesignConnection[];
     definitions: ComponentDefinition[];
+    cableEntries?: CableEntry[];
+    cableBundles?: CableBundle[];
+    externalCables?: ExternalCable[];
 };
 
 export function DesignBom({
@@ -21,6 +27,9 @@ export function DesignBom({
     ducts,
     connections,
     definitions,
+    cableEntries = [],
+    cableBundles = [],
+    externalCables = [],
 }: DesignBomProps) {
     const counts = new Map<number, number>();
 
@@ -63,6 +72,15 @@ export function DesignBom({
                     ['DIN rails', rails.length],
                     ['Wire ducts', ducts.length],
                     ['Connections', connections.length],
+                    ['Cable entries', cableEntries.length],
+                    ['Cable bundles', cableBundles.length],
+                    ['External cables', externalCables.length],
+                    [
+                        'Unassigned cables',
+                        externalCables.filter(
+                            (cable) => !cable.internal_component_portable_id,
+                        ).length,
+                    ],
                 ].map(([label, count]) => (
                     <div
                         key={String(label)}
@@ -77,6 +95,39 @@ export function DesignBom({
                     </div>
                 ))}
             </dl>
+            {externalCables.length > 0 && (
+                <div className="grid gap-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                        Field cables
+                    </h3>
+                    <ul className="divide-y rounded-lg border">
+                        {Object.entries(
+                            externalCables.reduce<Record<string, number>>(
+                                (groups, cable) => {
+                                    const bundle = cableBundles.find(
+                                        (item) =>
+                                            item.portable_id ===
+                                            cable.bundle_portable_id,
+                                    );
+                                    const key = `${(bundle?.cable_class ?? cable.cable_class ?? 'other').replaceAll('_', ' ')} · ${cable.cable_type}${cable.gauge ? ` · ${cable.gauge}` : ''}`;
+                                    groups[key] = (groups[key] ?? 0) + 1;
+
+                                    return groups;
+                                },
+                                {},
+                            ),
+                        ).map(([label, count]) => (
+                            <li
+                                key={label}
+                                className="flex items-center justify-between gap-3 p-3 text-sm"
+                            >
+                                <span className="capitalize">{label}</span>
+                                <span>×{count}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
             <div className="grid gap-2">
                 <h3 className="text-xs font-semibold text-muted-foreground">
                     Bill of materials

@@ -10,6 +10,6 @@ class LightingLayoutController extends Controller
 {
     public function update(SaveLightingLayoutRequest $request, int $design, LightingLayoutService $layouts): JsonResponse
     {
-        return response()->json($layouts->save($request->user(), $design, $request->validated()));
+        return response()->json($layouts->save($request->user(), $design, $request->validated(), $request->mutationHash()));
     }
 }

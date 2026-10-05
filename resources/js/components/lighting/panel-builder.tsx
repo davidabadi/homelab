@@ -17,6 +17,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { BuilderCableEntries } from './builder-cable-entries';
 import { rowMmToPixels, rowPixelsToMm, snapDinPosition } from './din-placement';
 import { PanelDevice } from './panel-device';
 import {
@@ -413,6 +414,7 @@ export function PanelBuilder({
                     data-testid="lighting-enclosure"
                     className="relative rounded-2xl border border-[#68707e] bg-gradient-to-br from-[#747c88] via-[#444c59] to-[#69717e] p-3 shadow-[0_20px_60px_#0005,inset_0_1px_0_#ffffff35]"
                 >
+                    <BuilderCableEntries layout={layout} editor={editor} />
                     <div
                         aria-hidden="true"
                         className="absolute inset-x-5 top-1.5 flex justify-between"

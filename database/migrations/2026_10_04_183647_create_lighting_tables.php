@@ -21,6 +21,7 @@ return new class extends Migration
             $table->decimal('grid_size_mm', 12, 3)->default(5);
             $table->boolean('snap_to_grid')->default(true);
             $table->text('notes')->nullable();
+            $table->jsonb('metadata')->nullable();
             $table->unsignedInteger('save_version')->default(0);
             $table->uuid('last_mutation_id')->nullable();
             $table->string('last_mutation_hash', 64)->nullable();
@@ -65,8 +66,10 @@ return new class extends Migration
             $table->decimal('y_mm', 12, 3);
             $table->decimal('length_mm', 12, 3);
             $table->decimal('width_mm', 12, 3);
+            $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->unique(['design_id', 'portable_id']);
+            $table->index(['design_id', 'sort_order']);
         });
 
         Schema::create('lighting_design_ducts', function (Blueprint $table): void {
@@ -89,6 +92,7 @@ return new class extends Migration
             $table->uuid('portable_id');
             $table->foreignId('component_definition_id')->constrained('lighting_component_definitions')->restrictOnDelete();
             $table->foreignId('rail_id')->nullable()->constrained('lighting_design_rails')->nullOnDelete();
+            $table->unsignedInteger('sort_order')->default(0);
             $table->decimal('x_mm', 12, 3);
             $table->decimal('y_mm', 12, 3);
             $table->unsignedSmallInteger('rotation')->default(0);
@@ -97,6 +101,7 @@ return new class extends Migration
             $table->jsonb('metadata')->nullable();
             $table->timestamps();
             $table->unique(['design_id', 'portable_id']);
+            $table->index(['design_id', 'rail_id', 'sort_order']);
         });
 
         Schema::create('lighting_design_connections', function (Blueprint $table): void {
@@ -117,10 +122,72 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['design_id', 'portable_id']);
         });
+
+        $this->createCablingTables();
+    }
+
+    public function createCablingTables(): void
+    {
+        Schema::create('lighting_design_cable_entries', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('design_id')->constrained('lighting_designs')->cascadeOnDelete();
+            $table->uuid('portable_id');
+            $table->string('label');
+            $table->string('side');
+            $table->decimal('offset_mm', 12, 3);
+            $table->decimal('span_mm', 12, 3);
+            $table->string('entry_type');
+            $table->text('notes')->nullable();
+            $table->jsonb('metadata')->nullable();
+            $table->timestamps();
+            $table->unique(['design_id', 'portable_id']);
+        });
+
+        Schema::create('lighting_design_cable_bundles', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('design_id')->constrained('lighting_designs')->cascadeOnDelete();
+            $table->foreignId('cable_entry_id')->constrained('lighting_design_cable_entries')->cascadeOnDelete();
+            $table->uuid('portable_id');
+            $table->string('name');
+            $table->string('external_location')->nullable();
+            $table->string('cable_class');
+            $table->string('direction');
+            $table->string('display_color')->nullable();
+            $table->unsignedInteger('planned_count')->nullable();
+            $table->jsonb('route_points');
+            $table->text('notes')->nullable();
+            $table->jsonb('metadata')->nullable();
+            $table->timestamps();
+            $table->unique(['design_id', 'portable_id']);
+        });
+
+        Schema::create('lighting_design_external_cables', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('design_id')->constrained('lighting_designs')->cascadeOnDelete();
+            $table->foreignId('bundle_id')->nullable()->constrained('lighting_design_cable_bundles')->cascadeOnDelete();
+            $table->foreignId('cable_entry_id')->nullable()->constrained('lighting_design_cable_entries')->cascadeOnDelete();
+            $table->uuid('portable_id');
+            $table->string('label');
+            $table->string('cable_type');
+            $table->string('gauge')->nullable();
+            $table->unsignedSmallInteger('conductor_count')->default(1);
+            $table->foreignId('internal_component_id')->nullable()->constrained('lighting_design_components')->nullOnDelete();
+            $table->string('internal_terminal')->nullable();
+            $table->string('cable_class')->nullable();
+            $table->string('direction')->nullable();
+            $table->jsonb('branch_route_points');
+            $table->text('notes')->nullable();
+            $table->jsonb('metadata')->nullable();
+            $table->timestamps();
+            $table->unique(['design_id', 'portable_id']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('lighting_design_external_cables');
+        Schema::dropIfExists('lighting_design_cable_bundles');
+        Schema::dropIfExists('lighting_design_cable_entries');
         Schema::dropIfExists('lighting_design_connections');
         Schema::dropIfExists('lighting_design_components');
         Schema::dropIfExists('lighting_design_ducts');

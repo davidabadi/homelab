@@ -9,6 +9,7 @@ use App\Models\LightingDesignRail;
 use App\Models\User;
 use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /** @return array<string, mixed> */
@@ -18,6 +19,7 @@ function lightingRowLayoutPayload(LightingDesign $design): array
         'structured' => true, 'base_version' => $design->save_version,
         'mutation_id' => (string) Str::uuid(), 'design' => Arr::only($design->toArray(), LightingDesign::EDITABLE_FIELDS),
         'rails' => [], 'components' => [], 'ducts' => [], 'connections' => [],
+        'cable_entries' => [], 'cable_bundles' => [], 'external_cables' => [],
     ];
 }
 
@@ -419,7 +421,7 @@ it('keeps a legacy design unchanged on read and converts its attached geometry o
         ->assertJsonPath('design.save_version', 23)->assertJsonPath('components.0.y_mm', -10.5)
         ->assertJsonPath('components.0.x_mm', 145)->json();
     $payload = [
-        ...lightingRowLayoutPayload($design), ...Arr::only($snapshot, ['rails', 'components', 'ducts', 'connections']),
+        ...lightingRowLayoutPayload($design), ...Arr::only($snapshot, ['rails', 'components', 'ducts', 'connections', 'cable_entries', 'cable_bundles', 'external_cables']),
     ];
 
     $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk()->assertJsonPath('save_version', 24);
@@ -442,33 +444,26 @@ it('returns 422 when automatic row growth would exceed the supported physical ra
     expect($design->fresh()->save_version)->toBe(0);
 });
 
-it('backfills existing row and device order without rewriting physical geometry or portable identifiers', function (): void {
-    $migration = require database_path('migrations/2026_10_04_210747_add_sort_order_to_lighting_rows_and_components.php');
+it('creates the complete ordered lighting schema from its single initial migration and rolls it back safely', function (): void {
+    $migration = require database_path('migrations/2026_10_04_183647_create_lighting_tables.php');
     $migration->down();
-    $user = User::factory()->create();
-    $design = LightingDesign::factory()->for($user)->create();
-    $definition = LightingComponentDefinition::factory()->create();
-    $bottom = LightingDesignRail::query()->create(Arr::except(LightingDesignRail::factory()->raw([
-        'design_id' => $design->id, 'y_mm' => 210,
-    ]), 'sort_order'));
-    $top = LightingDesignRail::query()->create(Arr::except(LightingDesignRail::factory()->raw([
-        'design_id' => $design->id, 'y_mm' => 70,
-    ]), 'sort_order'));
-    $right = LightingDesignComponent::query()->create(Arr::except(LightingDesignComponent::factory()->raw([
-        'design_id' => $design->id, 'component_definition_id' => $definition->id, 'rail_id' => $top->id, 'x_mm' => 100, 'y_mm' => -10.5,
-    ]), 'sort_order'));
-    $left = LightingDesignComponent::query()->create(Arr::except(LightingDesignComponent::factory()->raw([
-        'design_id' => $design->id, 'component_definition_id' => $definition->id, 'rail_id' => $top->id, 'x_mm' => 20,
-    ]), 'sort_order'));
-
+    expect(Schema::hasTable('lighting_design_external_cables'))->toBeFalse();
+    expect(Schema::hasTable('lighting_designs'))->toBeFalse();
     $migration->up();
-    expect($top->fresh()->sort_order)->toBe(0);
-    expect($bottom->fresh()->sort_order)->toBe(1);
-    expect($left->fresh()->sort_order)->toBe(0);
-    expect($right->fresh()->sort_order)->toBe(1);
-    expect($right->fresh()->x_mm)->toBe(100.0);
-    expect($right->fresh()->y_mm)->toBe(-10.5);
-    expect($right->fresh()->portable_id)->toBe($right->portable_id);
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(['metadata' => ['room' => 'Workshop']]);
+    $definition = LightingComponentDefinition::factory()->create();
+    $rail = LightingDesignRail::factory()->for($design, 'design')->create(['sort_order' => 2]);
+    $component = LightingDesignComponent::factory()->for($design, 'design')->for($definition, 'definition')
+        ->create(['rail_id' => $rail->id, 'sort_order' => 3]);
+
+    expect($rail->fresh()->sort_order)->toBe(2);
+    expect($component->fresh()->sort_order)->toBe(3);
+    expect($design->fresh()->metadata)->toBe(['room' => 'Workshop']);
+    expect(Schema::hasTable('lighting_design_cable_entries'))->toBeTrue();
+    expect(Schema::hasTable('lighting_design_cable_bundles'))->toBeTrue();
+    expect(Schema::hasTable('lighting_design_external_cables'))->toBeTrue();
+    expect(array_map('basename', glob(database_path('migrations/*lighting*.php'))))->toBe(['2026_10_04_183647_create_lighting_tables.php']);
 });
 
 it('keeps a first device at the far right and preserves intentional gaps after subsequent saves', function (): void {

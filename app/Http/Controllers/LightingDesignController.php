@@ -30,7 +30,7 @@ class LightingDesignController extends Controller
 
     public function index(Request $request, LightingDesignPresenter $presenter): JsonResponse
     {
-        $designs = $request->user()->lightingDesigns()->withCount(['components', 'rails', 'ducts', 'connections'])
+        $designs = $request->user()->lightingDesigns()->withCount([...LightingDesignPresenter::COUNT_RELATIONS, 'externalCables as unassigned_external_cables_count' => fn ($query) => $query->whereNull('internal_component_id')])
             ->orderByDesc('updated_at')->orderByDesc('id')->get()->map($presenter->design(...))->values();
 
         return response()->json(['designs' => $designs]);
@@ -44,7 +44,7 @@ class LightingDesignController extends Controller
             ])->refresh();
             LightingRowLayout::createDefaultRows($design);
 
-            return $design->loadCount(['components', 'rails', 'ducts', 'connections']);
+            return $design->loadCount(LightingDesignPresenter::COUNT_RELATIONS);
         });
 
         return response()->json(['design' => $presenter->design($design)], 201);
@@ -65,7 +65,7 @@ class LightingDesignController extends Controller
             $owned->last_mutation_hash = null;
             $owned->save();
 
-            return $owned->loadCount(['components', 'rails', 'ducts', 'connections']);
+            return $owned->loadCount([...LightingDesignPresenter::COUNT_RELATIONS, 'externalCables as unassigned_external_cables_count' => fn ($query) => $query->whereNull('internal_component_id')]);
         });
 
         return response()->json(['design' => $presenter->design($updated)]);

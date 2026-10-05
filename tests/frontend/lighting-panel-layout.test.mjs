@@ -108,6 +108,9 @@ function layout(overrides = {}) {
         components: [],
         ducts: [],
         connections: [],
+        cable_entries: [],
+        cable_bundles: [],
+        external_cables: [],
         ...overrides,
     };
 }

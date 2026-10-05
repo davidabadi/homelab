@@ -41,10 +41,10 @@ class LightingDesignExporter
             'exported_at' => now()->utc()->toIso8601String(),
             'design' => [...Arr::only($validated['design'], LightingDesign::EDITABLE_FIELDS), 'metadata' => $validated['design']['metadata'] ?? null],
             'catalog' => $catalog, 'rows' => $validated['rails'],
-            ...Arr::only($validated, ['components', 'ducts', 'connections']),
+            ...Arr::only($validated, ['components', 'ducts', 'connections', ...LightingCablingLayout::GROUPS]),
         ]);
         $document['design']['metadata'] = (object) ($document['design']['metadata'] ?? []);
-        foreach (['catalog', 'components'] as $group) {
+        foreach (['catalog', 'components', ...LightingCablingLayout::GROUPS] as $group) {
             foreach ($document[$group] as &$item) {
                 $item['metadata'] = (object) ($item['metadata'] ?? []);
             }

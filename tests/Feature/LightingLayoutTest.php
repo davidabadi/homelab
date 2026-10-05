@@ -15,6 +15,7 @@ function lightingLayoutPayload(LightingDesign $design): array
         'base_version' => $design->save_version, 'mutation_id' => (string) Str::uuid(),
         'design' => Arr::only($design->toArray(), LightingDesign::EDITABLE_FIELDS),
         'components' => [], 'rails' => [], 'ducts' => [], 'connections' => [],
+        'cable_entries' => [], 'cable_bundles' => [], 'external_cables' => [],
     ];
 }
 

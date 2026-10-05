@@ -73,4 +73,22 @@ class LightingDesign extends Model
     {
         return $this->hasMany(LightingDesignConnection::class, 'design_id');
     }
+
+    /** @return HasMany<LightingDesignCableEntry, $this> */
+    public function cableEntries(): HasMany
+    {
+        return $this->hasMany(LightingDesignCableEntry::class, 'design_id');
+    }
+
+    /** @return HasMany<LightingDesignCableBundle, $this> */
+    public function cableBundles(): HasMany
+    {
+        return $this->hasMany(LightingDesignCableBundle::class, 'design_id');
+    }
+
+    /** @return HasMany<LightingDesignExternalCable, $this> */
+    public function externalCables(): HasMany
+    {
+        return $this->hasMany(LightingDesignExternalCable::class, 'design_id');
+    }
 }

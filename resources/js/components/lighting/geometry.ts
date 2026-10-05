@@ -562,7 +562,7 @@ export function moveLayoutObject(
     point: MmPoint,
     options: { snap?: boolean } = {},
 ): LightingLayout {
-    if (!selection || selection.type === 'connection') {
+    if (!selection || !['component', 'rail', 'duct'].includes(selection.type)) {
         return layout;
     }
 

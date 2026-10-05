@@ -38,3 +38,5 @@ yarn-error.log
 /.zed
 docs/design-reference
 /.playwright-mcp
+/output
+debug.log

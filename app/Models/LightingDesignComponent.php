@@ -6,6 +6,7 @@ use Database\Factories\LightingDesignComponentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
@@ -23,6 +24,21 @@ class LightingDesignComponent extends Model
     protected function casts(): array
     {
         return ['sort_order' => 'integer', 'x_mm' => 'float', 'y_mm' => 'float', 'rotation' => 'integer', 'metadata' => 'array'];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (self $component): void {
+            $component->externalCables()->update([
+                'internal_component_id' => null, 'internal_terminal' => null, 'branch_route_points' => '[]',
+            ]);
+        });
+    }
+
+    /** @return HasMany<LightingDesignExternalCable, $this> */
+    public function externalCables(): HasMany
+    {
+        return $this->hasMany(LightingDesignExternalCable::class, 'internal_component_id');
     }
 
     /** @return BelongsTo<LightingDesign, $this> */

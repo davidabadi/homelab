@@ -3,6 +3,7 @@ import {
     BookOpen,
     Check,
     CircleAlert,
+    Cable,
     Download,
     LayoutPanelTop,
     ListTree,
@@ -41,6 +42,8 @@ export type EditorToolbarProps = {
     onNameChange: (name: string) => void;
     onAddDevice: () => void;
     onAddRow: () => void;
+    onAddCableEntry: () => void;
+    onCabling: () => void;
     onUndo: () => void;
     onRedo: () => void;
     onSettings: () => void;
@@ -178,6 +181,15 @@ export function EditorToolbar(props: EditorToolbarProps) {
                                 align="end"
                                 className="lighting-editor-overlay dark w-52"
                             >
+                                <DropdownMenuItem
+                                    onClick={props.onAddCableEntry}
+                                >
+                                    <Plus /> Add cable entry
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={props.onCabling}>
+                                    <Cable /> External cabling
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={props.onSettings}>
                                     <Settings2 /> Panel settings
                                 </DropdownMenuItem>

@@ -8,6 +8,11 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    CableBundleProperties,
+    CableEntryProperties,
+    ExternalCableProperties,
+} from './cabling-properties';
 import { DesignBom } from './design-bom';
 import { DeviceProperties } from './device-properties';
 import { NumberField, NotesField } from './inspector-fields';
@@ -57,8 +62,31 @@ export function EditorWorkspace({
               )
             : null;
     const inspectorVisible = Boolean(
-        (component && definition) || row || connection,
+        (component && definition) ||
+        row ||
+        connection ||
+        ['cable_entry', 'cable_bundle', 'external_cable'].includes(
+            editor.selection?.type ?? '',
+        ),
     );
+    const entry =
+        editor.selection?.type === 'cable_entry'
+            ? layout.cable_entries.find(
+                  (item) => item.portable_id === editor.selection?.id,
+              )
+            : null;
+    const bundle =
+        editor.selection?.type === 'cable_bundle'
+            ? layout.cable_bundles.find(
+                  (item) => item.portable_id === editor.selection?.id,
+              )
+            : null;
+    const externalCable =
+        editor.selection?.type === 'external_cable'
+            ? layout.external_cables.find(
+                  (item) => item.portable_id === editor.selection?.id,
+              )
+            : null;
 
     return (
         <div className="flex min-h-0 flex-1">
@@ -79,7 +107,13 @@ export function EditorWorkspace({
                                 ? 'Device details'
                                 : row
                                   ? `Row ${String(rowIndex + 1).padStart(2, '0')}`
-                                  : 'Connection'}
+                                  : entry
+                                    ? 'Cable entry'
+                                    : bundle
+                                      ? 'Cable bundle'
+                                      : externalCable
+                                        ? 'External cable'
+                                        : 'Connection'}
                         </h2>
                         <Button
                             size="icon"
@@ -106,7 +140,7 @@ export function EditorWorkspace({
                                 <Button
                                     variant="ghost"
                                     className="justify-start text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                                    onClick={editor.deleteSelection}
+                                    onClick={() => editor.deleteSelection()}
                                 >
                                     <Trash2 /> Delete device
                                 </Button>
@@ -191,11 +225,35 @@ export function EditorWorkspace({
                                 <Button
                                     variant="ghost"
                                     className="justify-start text-red-300"
-                                    onClick={editor.deleteSelection}
+                                    onClick={() => editor.deleteSelection()}
                                 >
                                     <Trash2 /> Delete connection
                                 </Button>
                             </>
+                        )}
+                        {entry && (
+                            <CableEntryProperties
+                                key={entry.portable_id}
+                                entry={entry}
+                                layout={layout}
+                                editor={editor}
+                            />
+                        )}
+                        {bundle && (
+                            <CableBundleProperties
+                                key={bundle.portable_id}
+                                bundle={bundle}
+                                layout={layout}
+                                editor={editor}
+                            />
+                        )}
+                        {externalCable && (
+                            <ExternalCableProperties
+                                key={externalCable.portable_id}
+                                cable={externalCable}
+                                layout={layout}
+                                editor={editor}
+                            />
                         )}
                     </div>
                 </aside>
@@ -242,6 +300,9 @@ export function PanelSettingsDialog({
                         ducts={layout.ducts}
                         connections={layout.connections}
                         definitions={layout.definitions}
+                        cableEntries={layout.cable_entries}
+                        cableBundles={layout.cable_bundles}
+                        externalCables={layout.external_cables}
                     />
                 ) : (
                     <div className="grid gap-5">
