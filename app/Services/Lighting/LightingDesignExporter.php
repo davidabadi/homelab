@@ -38,7 +38,7 @@ class LightingDesignExporter
 
         $document = $this->schema->parse([
             'format' => LightingInterchangeV1::FORMAT, 'schema_version' => LightingInterchangeV1::VERSION,
-            'exported_at' => now()->toIso8601String(),
+            'exported_at' => now()->utc()->toIso8601String(),
             'design' => [...Arr::only($validated['design'], LightingDesign::EDITABLE_FIELDS), 'metadata' => $validated['design']['metadata'] ?? null],
             'catalog' => $catalog, 'rows' => $validated['rails'],
             ...Arr::only($validated, ['components', 'ducts', 'connections']),

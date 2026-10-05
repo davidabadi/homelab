@@ -468,6 +468,18 @@ it('rolls back the complete imported design if creating a child fails', function
     expect(LightingComponentDefinition::query()->count())->toBe(3);
 });
 
+it('timestamps portable exports in UTC regardless of the application timezone', function (): void {
+    $originalTimezone = date_default_timezone_get();
+    date_default_timezone_set('America/New_York');
+
+    try {
+        $fixture = lightingInterchangeFixture();
+        expect($fixture['document']['exported_at'])->toEndWith('+00:00');
+    } finally {
+        date_default_timezone_set($originalTimezone);
+    }
+});
+
 it('protects export ownership and requires authentication for interchange endpoints', function (): void {
     $fixture = lightingInterchangeFixture();
     $this->postJson(route('lighting.imports.preflight'), ['document' => $fixture['document']])->assertUnauthorized();
