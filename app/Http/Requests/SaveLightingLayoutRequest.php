@@ -150,7 +150,7 @@ class SaveLightingLayoutRequest extends FormRequest
                     $rails = collect($this->array('rails'))->keyBy('portable_id');
                 }
                 StoreLightingDesignRequest::validateMargins($validator, $this->input('design'), 'design.');
-                foreach (LightingDinPlacement::validateRows($this->array('rails'), $this->array('components'), $definitions->all()) as $key => $messages) {
+                foreach (LightingDinPlacement::validateRows(array_values($this->array('rails')), array_values($this->array('components')), $definitions->all()) as $key => $messages) {
                     foreach ($messages as $message) {
                         $validator->errors()->add($key, $message);
                     }
