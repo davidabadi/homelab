@@ -1,0 +1,831 @@
+{
+    "format": "homelab-lighting-design",
+    "schema_version": 1,
+    "exported_at": "2026-10-05T12:00:00Z",
+    "design": {
+        "name": "Lighting import example - all options",
+        "width_mm": 600,
+        "height_mm": 500,
+        "depth_mm": 200,
+        "margin_top_mm": 20,
+        "margin_right_mm": 20,
+        "margin_bottom_mm": 20,
+        "margin_left_mm": 20,
+        "grid_size_mm": 5,
+        "snap_to_grid": true,
+        "notes": "Illustrative layout demonstrating all supported enum choices and optional fields. See lighting-import-reference.md for field requirements and constraints.",
+        "metadata": {
+            "project": "Sample lighting panel",
+            "room": "Workshop",
+            "revision": 1,
+            "tags": [
+                "sample",
+                "import-reference"
+            ],
+            "custom": {
+                "drawing_reference": "EXAMPLE-001"
+            }
+        }
+    },
+    "catalog": [
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000001",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "DIN-36",
+            "display_name": "Sample DIN controller",
+            "category": "din-dimmer",
+            "kind": "component",
+            "sku": "SAMPLE-001",
+            "width_mm": 36,
+            "height_mm": 90,
+            "depth_mm": 60,
+            "din_modules": 2,
+            "mounting_type": "din-rail",
+            "mounting_anchor_x_mm": 18,
+            "mounting_anchor_y_mm": 45,
+            "terminals": [
+                {
+                    "key": "IN",
+                    "label": "Input",
+                    "x_mm": 9,
+                    "y_mm": 0,
+                    "side": "top",
+                    "purpose": "line input",
+                    "metadata": {
+                        "channel": 1
+                    }
+                },
+                {
+                    "key": "OUT",
+                    "label": "Output",
+                    "x_mm": 27,
+                    "y_mm": 90,
+                    "side": "bottom",
+                    "purpose": "switched output",
+                    "metadata": {}
+                },
+                {
+                    "key": "CTRL",
+                    "label": "Control",
+                    "x_mm": 0,
+                    "y_mm": 45,
+                    "side": "left",
+                    "purpose": "control signal",
+                    "metadata": {}
+                },
+                {
+                    "key": "DATA",
+                    "label": "Data",
+                    "x_mm": 36,
+                    "y_mm": 45,
+                    "side": "right",
+                    "purpose": null,
+                    "metadata": {}
+                }
+            ],
+            "metadata": {
+                "sample_dimensions": true,
+                "sample_terminal_positions": true,
+                "dimensions_status": "sample"
+            },
+            "image_url": "https://example.com/lighting/sample-din-controller.png",
+            "datasheet_url": "https://example.com/lighting/sample-din-controller.pdf",
+            "description": "Illustrative catalog definition for import and layout examples.",
+            "has_local_image": false
+        },
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000002",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "PANEL-40",
+            "display_name": "Sample panel module",
+            "category": "io-module",
+            "kind": "component",
+            "sku": "SAMPLE-002",
+            "width_mm": 40,
+            "height_mm": 40,
+            "depth_mm": 20,
+            "din_modules": null,
+            "mounting_type": "panel",
+            "mounting_anchor_x_mm": 20,
+            "mounting_anchor_y_mm": 20,
+            "terminals": [
+                {
+                    "key": "PWR",
+                    "label": "Power",
+                    "x_mm": 20,
+                    "y_mm": 0,
+                    "side": "top",
+                    "purpose": "power input",
+                    "metadata": {}
+                },
+                {
+                    "key": "OUT",
+                    "label": "Output",
+                    "x_mm": 40,
+                    "y_mm": 20,
+                    "side": "right",
+                    "purpose": "signal output",
+                    "metadata": {}
+                }
+            ],
+            "metadata": {
+                "sample_dimensions": true,
+                "sample_terminal_positions": true,
+                "dimensions_status": "sample"
+            },
+            "image_url": null,
+            "datasheet_url": null,
+            "description": "Demonstrates has_local_image: true. This JSON contains no local image bytes; supply a local image separately in the catalog.",
+            "has_local_image": true
+        },
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000003",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "PCB-60",
+            "display_name": "Sample PCB controller",
+            "category": "controller",
+            "kind": "component",
+            "sku": "SAMPLE-003",
+            "width_mm": 60,
+            "height_mm": 40,
+            "depth_mm": 15,
+            "din_modules": null,
+            "mounting_type": "pcb",
+            "mounting_anchor_x_mm": 30,
+            "mounting_anchor_y_mm": 20,
+            "terminals": [
+                {
+                    "key": "24V+",
+                    "label": "24 V positive",
+                    "x_mm": 30,
+                    "y_mm": 0,
+                    "side": "top",
+                    "purpose": "power input",
+                    "metadata": {}
+                },
+                {
+                    "key": "GND",
+                    "label": "Ground",
+                    "x_mm": 30,
+                    "y_mm": 40,
+                    "side": "bottom",
+                    "purpose": "power return",
+                    "metadata": {}
+                },
+                {
+                    "key": "DATA",
+                    "label": "Data",
+                    "x_mm": 60,
+                    "y_mm": 20,
+                    "side": "right",
+                    "purpose": "data signal",
+                    "metadata": {}
+                }
+            ],
+            "metadata": {
+                "sample_dimensions": true,
+                "sample_terminal_positions": true,
+                "dimensions_status": "sample"
+            },
+            "image_url": null,
+            "datasheet_url": null,
+            "description": "Illustrative catalog definition for import and layout examples.",
+            "has_local_image": false
+        },
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000004",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "FREE-30",
+            "display_name": "Sample free-mounted device",
+            "category": "miscellaneous",
+            "kind": "component",
+            "sku": null,
+            "width_mm": 30,
+            "height_mm": 20,
+            "depth_mm": null,
+            "din_modules": null,
+            "mounting_type": "free",
+            "mounting_anchor_x_mm": null,
+            "mounting_anchor_y_mm": null,
+            "terminals": [
+                {
+                    "key": "OUT",
+                    "label": "Output",
+                    "x_mm": 15,
+                    "y_mm": 20,
+                    "side": "bottom",
+                    "purpose": "control signal",
+                    "metadata": {}
+                }
+            ],
+            "metadata": {
+                "sample_dimensions": true
+            },
+            "image_url": null,
+            "datasheet_url": null,
+            "description": null,
+            "has_local_image": false
+        },
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000005",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "TS35-560",
+            "display_name": "Sample DIN rail",
+            "category": "din-rail",
+            "kind": "rail",
+            "sku": "SAMPLE-005",
+            "width_mm": 560,
+            "height_mm": 35,
+            "depth_mm": 7.5,
+            "din_modules": null,
+            "mounting_type": "panel",
+            "mounting_anchor_x_mm": null,
+            "mounting_anchor_y_mm": null,
+            "terminals": [],
+            "metadata": {},
+            "image_url": null,
+            "datasheet_url": null,
+            "description": "Illustrative catalog definition for import and layout examples.",
+            "has_local_image": false
+        },
+        {
+            "catalog_family_id": "11111111-1111-4111-8111-000000000006",
+            "revision": 1,
+            "manufacturer": "Example Devices",
+            "model": "DUCT-40",
+            "display_name": "Sample wire duct",
+            "category": "wire-duct",
+            "kind": "duct",
+            "sku": "SAMPLE-006",
+            "width_mm": 560,
+            "height_mm": 40,
+            "depth_mm": 40,
+            "din_modules": null,
+            "mounting_type": "panel",
+            "mounting_anchor_x_mm": 280,
+            "mounting_anchor_y_mm": 20,
+            "terminals": [],
+            "metadata": {},
+            "image_url": null,
+            "datasheet_url": null,
+            "description": "Illustrative catalog definition for import and layout examples.",
+            "has_local_image": false
+        }
+    ],
+    "rows": [
+        {
+            "portable_id": "22222222-2222-4222-8222-000000000001",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000005",
+                "revision": 1
+            },
+            "sort_order": 0,
+            "x_mm": 20,
+            "y_mm": 72.5,
+            "length_mm": 560,
+            "width_mm": 35
+        },
+        {
+            "portable_id": "22222222-2222-4222-8222-000000000002",
+            "catalog_ref": null,
+            "sort_order": 1,
+            "x_mm": 20,
+            "y_mm": 212.5,
+            "length_mm": 560,
+            "width_mm": 35
+        }
+    ],
+    "components": [
+        {
+            "portable_id": "33333333-3333-4333-8333-000000000001",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000001",
+                "revision": 1
+            },
+            "sort_order": 0,
+            "x_mm": 20,
+            "y_mm": 45,
+            "rotation": 0,
+            "custom_label": "DIN controller A",
+            "rail_portable_id": "22222222-2222-4222-8222-000000000001",
+            "notes": "Upright DIN device; mounting anchor aligns at y = 90 mm.",
+            "metadata": {
+                "circuit": "L01",
+                "channel": 1
+            }
+        },
+        {
+            "portable_id": "33333333-3333-4333-8333-000000000002",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000001",
+                "revision": 1
+            },
+            "sort_order": 0,
+            "x_mm": 140,
+            "y_mm": 185,
+            "rotation": 180,
+            "custom_label": "DIN controller B",
+            "rail_portable_id": "22222222-2222-4222-8222-000000000002",
+            "notes": "180-degree DIN placement; mounting anchor aligns at y = 230 mm.",
+            "metadata": {}
+        },
+        {
+            "portable_id": "33333333-3333-4333-8333-000000000003",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000002",
+                "revision": 1
+            },
+            "sort_order": 0,
+            "x_mm": 320,
+            "y_mm": 60,
+            "rotation": 90,
+            "custom_label": "Panel module",
+            "rail_portable_id": null,
+            "notes": "Free placement with 90-degree rotation.",
+            "metadata": {}
+        },
+        {
+            "portable_id": "33333333-3333-4333-8333-000000000004",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000003",
+                "revision": 1
+            },
+            "sort_order": 1,
+            "x_mm": 360,
+            "y_mm": 200,
+            "rotation": 270,
+            "custom_label": "PCB controller",
+            "rail_portable_id": null,
+            "notes": "Free placement with 270-degree rotation.",
+            "metadata": {}
+        },
+        {
+            "portable_id": "33333333-3333-4333-8333-000000000005",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000004",
+                "revision": 1
+            },
+            "sort_order": 2,
+            "x_mm": 440,
+            "y_mm": 220,
+            "rotation": 0,
+            "custom_label": null,
+            "rail_portable_id": null,
+            "notes": null,
+            "metadata": {}
+        }
+    ],
+    "ducts": [
+        {
+            "portable_id": "44444444-4444-4444-8444-000000000001",
+            "catalog_ref": {
+                "catalog_family_id": "11111111-1111-4111-8111-000000000006",
+                "revision": 1
+            },
+            "x_mm": 20,
+            "y_mm": 145,
+            "length_mm": 560,
+            "width_mm": 40,
+            "orientation": "horizontal"
+        },
+        {
+            "portable_id": "44444444-4444-4444-8444-000000000002",
+            "catalog_ref": null,
+            "x_mm": 540,
+            "y_mm": 20,
+            "length_mm": 400,
+            "width_mm": 40,
+            "orientation": "vertical"
+        }
+    ],
+    "connections": [
+        {
+            "portable_id": "55555555-5555-4555-8555-000000000001",
+            "source_portable_id": "33333333-3333-4333-8333-000000000001",
+            "source_terminal": "OUT",
+            "target_portable_id": "33333333-3333-4333-8333-000000000002",
+            "target_terminal": "IN",
+            "cable_type": "Example internal cable",
+            "color": "#f59e0b",
+            "gauge": "1.5 mm2",
+            "conductor_count": 1,
+            "route_points": [
+                {
+                    "x_mm": 47,
+                    "y_mm": 135
+                },
+                {
+                    "x_mm": 47,
+                    "y_mm": 165
+                },
+                {
+                    "x_mm": 167,
+                    "y_mm": 165
+                },
+                {
+                    "x_mm": 167,
+                    "y_mm": 275
+                }
+            ],
+            "actual_length_mm": 300,
+            "notes": "Route ends at the physical input terminal of the 180-degree rotated device."
+        },
+        {
+            "portable_id": "55555555-5555-4555-8555-000000000002",
+            "source_portable_id": "33333333-3333-4333-8333-000000000004",
+            "source_terminal": "24V+",
+            "target_portable_id": "33333333-3333-4333-8333-000000000003",
+            "target_terminal": "PWR",
+            "cable_type": "Example power/control cable",
+            "color": null,
+            "gauge": null,
+            "conductor_count": 2,
+            "route_points": [
+                {
+                    "x_mm": 360,
+                    "y_mm": 230
+                },
+                {
+                    "x_mm": 360,
+                    "y_mm": 80
+                }
+            ],
+            "actual_length_mm": null,
+            "notes": null
+        }
+    ],
+    "cable_entries": [
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000001",
+            "label": "Top conduit",
+            "side": "top",
+            "offset_mm": 100,
+            "span_mm": 40,
+            "entry_type": "conduit",
+            "notes": "Example conduit entry.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000002",
+            "label": "Right cable gland",
+            "side": "right",
+            "offset_mm": 80,
+            "span_mm": 20,
+            "entry_type": "cable_gland",
+            "notes": "Example cable_gland entry.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000003",
+            "label": "Bottom gland plate",
+            "side": "bottom",
+            "offset_mm": 100,
+            "span_mm": 100,
+            "entry_type": "gland_plate",
+            "notes": "Example gland_plate entry.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000004",
+            "label": "Left cable tray",
+            "side": "left",
+            "offset_mm": 240,
+            "span_mm": 60,
+            "entry_type": "cable_tray",
+            "notes": "Example cable_tray entry.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000005",
+            "label": "Top open entry",
+            "side": "top",
+            "offset_mm": 300,
+            "span_mm": 50,
+            "entry_type": "open_entry",
+            "notes": "Example open_entry entry.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "66666666-6666-4666-8666-000000000006",
+            "label": "Bottom custom entry",
+            "side": "bottom",
+            "offset_mm": 400,
+            "span_mm": 30,
+            "entry_type": "other",
+            "notes": null,
+            "metadata": null
+        }
+    ],
+    "cable_bundles": [
+        {
+            "portable_id": "77777777-7777-4777-8777-000000000001",
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000001",
+            "name": "Incoming line-voltage bundle",
+            "external_location": "Supply location",
+            "cable_class": "line_voltage",
+            "direction": "incoming",
+            "display_color": "#f59e0b",
+            "planned_count": 3,
+            "route_points": [
+                {
+                    "x_mm": 120,
+                    "y_mm": 0
+                },
+                {
+                    "x_mm": 120,
+                    "y_mm": 30
+                },
+                {
+                    "x_mm": 60,
+                    "y_mm": 30
+                }
+            ],
+            "notes": "Example bundle trunk from entry midpoint to breakout point.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "77777777-7777-4777-8777-000000000002",
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000002",
+            "name": "Outgoing control bundle",
+            "external_location": "Control location",
+            "cable_class": "low_voltage_control",
+            "direction": "outgoing",
+            "display_color": "#22c55e",
+            "planned_count": null,
+            "route_points": [
+                {
+                    "x_mm": 600,
+                    "y_mm": 90
+                },
+                {
+                    "x_mm": 500,
+                    "y_mm": 90
+                },
+                {
+                    "x_mm": 500,
+                    "y_mm": 160
+                }
+            ],
+            "notes": "Example bundle trunk from entry midpoint to breakout point.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "77777777-7777-4777-8777-000000000003",
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000003",
+            "name": "Mixed data bundle",
+            "external_location": "Network location",
+            "cable_class": "data",
+            "direction": "mixed",
+            "display_color": "#3b82f6",
+            "planned_count": 2,
+            "route_points": [
+                {
+                    "x_mm": 150,
+                    "y_mm": 500
+                },
+                {
+                    "x_mm": 150,
+                    "y_mm": 340
+                },
+                {
+                    "x_mm": 360,
+                    "y_mm": 340
+                }
+            ],
+            "notes": "Example bundle trunk from entry midpoint to breakout point.",
+            "metadata": {
+                "sample": true
+            }
+        },
+        {
+            "portable_id": "77777777-7777-4777-8777-000000000004",
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000004",
+            "name": "Planned other bundle",
+            "external_location": null,
+            "cable_class": "other",
+            "direction": "incoming",
+            "display_color": null,
+            "planned_count": 2,
+            "route_points": [
+                {
+                    "x_mm": 0,
+                    "y_mm": 270
+                },
+                {
+                    "x_mm": 80,
+                    "y_mm": 270
+                },
+                {
+                    "x_mm": 80,
+                    "y_mm": 300
+                }
+            ],
+            "notes": "Planned bundle with no cable members yet.",
+            "metadata": {
+                "sample": true
+            }
+        }
+    ],
+    "external_cables": [
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000001",
+            "bundle_portable_id": "77777777-7777-4777-8777-000000000001",
+            "cable_entry_portable_id": null,
+            "label": "Assigned bundled input",
+            "cable_type": "Example supply cable",
+            "gauge": "1.5 mm2",
+            "conductor_count": 3,
+            "internal_component_portable_id": "33333333-3333-4333-8333-000000000001",
+            "internal_terminal": "IN",
+            "branch_route_points": [
+                {
+                    "x_mm": 60,
+                    "y_mm": 30
+                },
+                {
+                    "x_mm": 29,
+                    "y_mm": 30
+                },
+                {
+                    "x_mm": 29,
+                    "y_mm": 45
+                }
+            ],
+            "notes": "Class and direction are inherited from the bundle.",
+            "metadata": {
+                "circuit": "L01"
+            },
+            "cable_class": null,
+            "direction": null
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000002",
+            "bundle_portable_id": "77777777-7777-4777-8777-000000000001",
+            "cable_entry_portable_id": null,
+            "label": "Unassigned bundled spare",
+            "cable_type": "Example spare cable",
+            "gauge": null,
+            "conductor_count": 3,
+            "internal_component_portable_id": null,
+            "internal_terminal": null,
+            "branch_route_points": [],
+            "notes": "Inventory cable without an internal termination.",
+            "metadata": {},
+            "cable_class": null,
+            "direction": null
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000003",
+            "bundle_portable_id": "77777777-7777-4777-8777-000000000002",
+            "cable_entry_portable_id": null,
+            "label": "Assigned bundled control",
+            "cable_type": "Example control cable",
+            "gauge": "0.5 mm2",
+            "conductor_count": 2,
+            "internal_component_portable_id": "33333333-3333-4333-8333-000000000005",
+            "internal_terminal": "OUT",
+            "branch_route_points": [
+                {
+                    "x_mm": 500,
+                    "y_mm": 160
+                },
+                {
+                    "x_mm": 455,
+                    "y_mm": 160
+                },
+                {
+                    "x_mm": 455,
+                    "y_mm": 240
+                }
+            ],
+            "notes": null,
+            "metadata": {},
+            "cable_class": null,
+            "direction": null
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000004",
+            "bundle_portable_id": "77777777-7777-4777-8777-000000000003",
+            "cable_entry_portable_id": null,
+            "label": "Assigned bundled data",
+            "cable_type": "Example data cable",
+            "gauge": "24 AWG",
+            "conductor_count": 8,
+            "internal_component_portable_id": "33333333-3333-4333-8333-000000000004",
+            "internal_terminal": "DATA",
+            "branch_route_points": [
+                {
+                    "x_mm": 360,
+                    "y_mm": 340
+                },
+                {
+                    "x_mm": 380,
+                    "y_mm": 340
+                },
+                {
+                    "x_mm": 380,
+                    "y_mm": 200
+                }
+            ],
+            "notes": null,
+            "metadata": {},
+            "cable_class": null,
+            "direction": null
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000005",
+            "bundle_portable_id": "77777777-7777-4777-8777-000000000003",
+            "cable_entry_portable_id": null,
+            "label": "Routed unassigned bundled spare",
+            "cable_type": "Example spare data cable",
+            "gauge": null,
+            "conductor_count": 4,
+            "internal_component_portable_id": null,
+            "internal_terminal": null,
+            "branch_route_points": [
+                {
+                    "x_mm": 360,
+                    "y_mm": 340
+                },
+                {
+                    "x_mm": 400,
+                    "y_mm": 340
+                }
+            ],
+            "notes": "Unassigned cables may have a valid unfinished branch route.",
+            "metadata": {},
+            "cable_class": null,
+            "direction": null
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000006",
+            "bundle_portable_id": null,
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000005",
+            "label": "Assigned standalone cable",
+            "cable_type": "Example standalone cable",
+            "gauge": "0.75 mm2",
+            "conductor_count": 2,
+            "internal_component_portable_id": "33333333-3333-4333-8333-000000000003",
+            "internal_terminal": "PWR",
+            "branch_route_points": [
+                {
+                    "x_mm": 325,
+                    "y_mm": 0
+                },
+                {
+                    "x_mm": 325,
+                    "y_mm": 20
+                },
+                {
+                    "x_mm": 360,
+                    "y_mm": 20
+                },
+                {
+                    "x_mm": 360,
+                    "y_mm": 80
+                }
+            ],
+            "notes": "Standalone cables specify their own class and direction.",
+            "metadata": {},
+            "cable_class": "line_voltage",
+            "direction": "outgoing"
+        },
+        {
+            "portable_id": "88888888-8888-4888-8888-000000000007",
+            "bundle_portable_id": null,
+            "cable_entry_portable_id": "66666666-6666-4666-8666-000000000006",
+            "label": "Unassigned standalone spare",
+            "cable_type": "Example custom cable",
+            "gauge": null,
+            "conductor_count": 1,
+            "internal_component_portable_id": null,
+            "internal_terminal": null,
+            "branch_route_points": [],
+            "notes": null,
+            "metadata": {
+                "sample": true
+            },
+            "cable_class": "other",
+            "direction": "mixed"
+        }
+    ]
+}

@@ -1,10 +1,9 @@
-[mcp_servers.laravel-boost]
-command = "php"
-args = ["artisan", "boost:mcp"]
 
 [mcp_servers.context7]
 type = "http"
 url = "https://mcp.context7.com/mcp"
+bearer_token_env_var = "CONTEXT7_API_KEY"
 
-[mcp_servers.context7.http_headers]
-Authorization = "Bearer ctx7sk-ff88cc66-d0cb-4b81-bf68-fa939f55fd70"
+[mcp_servers.laravel-boost]
+command = "php"
+args = ["artisan", "boost:mcp"]

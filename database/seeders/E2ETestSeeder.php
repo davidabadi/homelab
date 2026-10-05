@@ -21,6 +21,8 @@ class E2ETestSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(LightingComponentCatalogSeeder::class);
+
         $primary = $this->createUser('E2E Primary User', 'e2e@example.test');
         $secondary = $this->createUser('E2E Secondary User', 'secondary@example.test');
         $this->createUser('E2E Unverified User', 'unverified@example.test', verified: false);

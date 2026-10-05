@@ -15,6 +15,7 @@ it('generates passkey origins for every configured module host', function () {
             'http://tv.test',
             'http://schedule.test',
             'http://presence.test',
+            'http://lighting.test',
         ])
         ->and(config('passkeys.allowed_origins'))
         ->toEqualCanonicalizing(config('fortify.passkeys.allowed_origins'))
@@ -27,6 +28,7 @@ it('resolves production passkey configuration from explicit module hosts', funct
         'TV_HOST' => 'tvtime.example.com',
         'SCHEDULE_HOST' => 'schedule.example.com',
         'PRESENCE_HOST' => 'presence.example.com',
+        'LIGHTING_HOST' => 'lighting.example.com',
         'PASSKEY_RP_ID' => 'example.com',
     ]);
 
@@ -36,6 +38,7 @@ it('resolves production passkey configuration from explicit module hosts', funct
             'https://tvtime.example.com',
             'https://schedule.example.com',
             'https://presence.example.com',
+            'https://lighting.example.com',
         ])
         ->not->toContain('https://unrelated.example.com');
 });
@@ -46,6 +49,7 @@ it('ignores empty module hosts and deduplicates repeated origins', function () {
         'TV_HOST' => 'tvtime.example.com',
         'SCHEDULE_HOST' => '',
         'PRESENCE_HOST' => 'tvtime.example.com',
+        'LIGHTING_HOST' => '',
         'PASSKEY_RP_ID' => '',
     ]);
 
@@ -61,6 +65,7 @@ it('retains a distinct app URL origin for local and legacy access', function () 
         'TV_HOST' => 'tv.localhost',
         'SCHEDULE_HOST' => '',
         'PRESENCE_HOST' => '',
+        'LIGHTING_HOST' => '',
         'PASSKEY_RP_ID' => '',
     ]);
 

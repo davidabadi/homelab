@@ -5,6 +5,11 @@ import process from 'node:process';
 
 const databasePath = resolve('database/e2e.sqlite');
 
+// Herd runs the normal application. External mode uses dedicated fixture data without resetting it.
+if (process.env.PLAYWRIGHT_EXTERNAL_SERVER === 'true') {
+    process.exit(0);
+}
+
 if (!existsSync(databasePath)) {
     closeSync(openSync(databasePath, 'w'));
 }
@@ -20,9 +25,11 @@ const environment = {
     TV_HOST: '127.0.0.1',
     SCHEDULE_HOST: 'schedule.localhost',
     PRESENCE_HOST: 'presence.localhost',
+    LIGHTING_HOST: 'lighting.localhost',
     APP_TIMEZONE: 'UTC',
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: databasePath,
+    DB_URL: '',
     BROADCAST_CONNECTION: 'null',
     CACHE_STORE: 'array',
     FILESYSTEM_DISK: 'local',

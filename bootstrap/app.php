@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 'tv' => base_path('routes/tv.php'),
                 'schedule' => base_path('routes/schedule.php'),
                 'presence' => base_path('routes/presence.php'),
+                'lighting' => base_path('routes/lighting.php'),
             ];
 
             // Wayfinder routes must remain relative because the same compiled

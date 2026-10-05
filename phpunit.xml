@@ -33,6 +33,7 @@
         <env name="TV_HOST" value="tv.test"/>
         <env name="SCHEDULE_HOST" value="schedule.test"/>
         <env name="PRESENCE_HOST" value="presence.test"/>
+        <env name="LIGHTING_HOST" value="lighting.test"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

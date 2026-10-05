@@ -37,3 +37,6 @@ yarn-error.log
 /.vscode
 /.zed
 docs/design-reference
+/.playwright-mcp
+/output
+debug.log
