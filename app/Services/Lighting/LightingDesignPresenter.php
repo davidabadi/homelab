@@ -49,9 +49,9 @@ class LightingDesignPresenter
     public function layout(LightingDesign $design): array
     {
         $design->load([
-            'components' => fn ($query) => $query->orderBy('id'),
+            'components' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
             'components.definition', 'components.rail',
-            'rails' => fn ($query) => $query->orderBy('id'),
+            'rails' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
             'ducts' => fn ($query) => $query->orderBy('id'),
             'connections' => fn ($query) => $query->orderBy('id'),
             'connections.sourceComponent', 'connections.targetComponent',
@@ -68,13 +68,13 @@ class LightingDesignPresenter
                 ->orderBy('id')->get()->map($this->definition(...))->values()->all(),
             'components' => $design->components->map(fn (LightingDesignComponent $component): array => [
                 ...Arr::only($component->toArray(), [
-                    'portable_id', 'component_definition_id', 'x_mm', 'y_mm', 'rotation', 'custom_label', 'notes',
+                    'portable_id', 'component_definition_id', 'sort_order', 'x_mm', 'y_mm', 'rotation', 'custom_label', 'notes',
                 ]),
                 'rail_portable_id' => $component->rail?->portable_id,
                 'metadata' => (object) ($component->metadata ?? []),
             ])->all(),
             'rails' => $design->rails->map(fn (LightingDesignRail $rail): array => Arr::only($rail->toArray(), [
-                'portable_id', 'component_definition_id', 'x_mm', 'y_mm', 'length_mm', 'width_mm',
+                'portable_id', 'component_definition_id', 'sort_order', 'x_mm', 'y_mm', 'length_mm', 'width_mm',
             ]))->all(),
             'ducts' => $design->ducts->map(fn (LightingDesignDuct $duct): array => Arr::only($duct->toArray(), [
                 'portable_id', 'component_definition_id', 'x_mm', 'y_mm', 'length_mm', 'width_mm', 'orientation',

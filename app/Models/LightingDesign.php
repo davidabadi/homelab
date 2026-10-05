@@ -12,6 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property int $user_id
  * @property string $name
+ * @property float $margin_top_mm
+ * @property float $margin_right_mm
+ * @property float $margin_bottom_mm
+ * @property float $margin_left_mm
  * @property int $save_version
  * @property string|null $last_mutation_id
  * @property string|null $last_mutation_hash

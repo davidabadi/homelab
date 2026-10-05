@@ -21,7 +21,10 @@ export function ComponentImage({
                 src={source}
                 alt={definition.display_name}
                 draggable={false}
-                className={cn('h-full w-full object-contain', className)}
+                className={cn(
+                    'h-full w-full object-contain mix-blend-multiply',
+                    className,
+                )}
                 onError={() =>
                     setFailedSources((current) => [...current, source])
                 }
@@ -32,25 +35,27 @@ export function ComponentImage({
     return (
         <div
             className={cn(
-                'flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden bg-muted p-1 text-center',
+                'flex h-full w-full items-center justify-center overflow-hidden',
                 className,
             )}
             role="img"
             aria-label={`${definition.manufacturer} ${definition.model}, ${definition.category}`}
         >
-            <CircuitBoard
+            <div
                 aria-hidden="true"
-                className="size-5 shrink-0 text-muted-foreground/60"
-            />
-            <span className="max-w-full truncate text-[9px] leading-tight font-semibold">
-                {definition.manufacturer}
-            </span>
-            <span className="max-w-full truncate text-[9px] leading-tight text-muted-foreground">
-                {definition.model}
-            </span>
-            <span className="max-w-full truncate text-[8px] leading-tight text-muted-foreground">
-                {definition.category}
-            </span>
+                className="relative flex h-[85%] max-h-32 min-h-10 w-[65%] max-w-24 flex-col items-center justify-center gap-3 rounded-md border border-slate-400/60 bg-gradient-to-b from-slate-100 to-slate-300 shadow-[2px_3px_0_0_#b6bcc5]"
+            >
+                <div className="absolute inset-x-2 top-2 h-2 rounded-sm bg-slate-600/70" />
+                <CircuitBoard className="size-7 text-slate-500" />
+                <div className="absolute inset-x-2 bottom-2 flex gap-1">
+                    {[0, 1, 2, 3].map((slot) => (
+                        <span
+                            key={slot}
+                            className="h-2 flex-1 rounded-xs bg-slate-500/60"
+                        />
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

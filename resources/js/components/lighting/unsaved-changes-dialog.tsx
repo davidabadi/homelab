@@ -55,7 +55,7 @@ export function UnsavedChangesDialog({
 }) {
     return (
         <Dialog open={editor.leaveDialog} onOpenChange={editor.setLeaveDialog}>
-            <DialogContent>
+            <DialogContent className="lighting-editor-overlay dark">
                 <DialogHeader>
                     <DialogTitle>Unsaved panel changes</DialogTitle>
                     <DialogDescription>

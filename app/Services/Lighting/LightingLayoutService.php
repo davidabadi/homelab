@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class LightingLayoutService
 {
@@ -26,6 +27,23 @@ class LightingLayoutService
             }
 
             abort_unless($design->save_version === (int) $layout['base_version'], 409, 'This design changed in another editor. Your local changes have been preserved.');
+
+            if ($layout['structured'] ?? false) {
+                $remainingRows = array_column($layout['rails'], 'portable_id');
+                $remainingComponents = [];
+                foreach ($layout['components'] as $component) {
+                    $remainingComponents[$component['portable_id']] = $component;
+                }
+                foreach ($design->components()->with('rail')->whereNotNull('rail_id')->get() as $component) {
+                    $remaining = $remainingComponents[$component->portable_id] ?? null;
+                    if ($remaining !== null && ! in_array($component->rail->portable_id, $remainingRows, true)
+                        && ($remaining['rail_portable_id'] ?? null) === null) {
+                        throw ValidationException::withMessages([
+                            'rails' => 'Only empty rows can be removed. Move or remove their devices first.',
+                        ]);
+                    }
+                }
+            }
 
             $railIds = [];
             foreach ($layout['rails'] as $railData) {

@@ -14,7 +14,7 @@ class LightingDesignRailFactory extends Factory
     {
         return [
             'design_id' => LightingDesign::factory(), 'portable_id' => (string) Str::uuid(),
-            'component_definition_id' => null, 'x_mm' => 20, 'y_mm' => 100, 'length_mm' => 300, 'width_mm' => 35,
+            'component_definition_id' => null, 'sort_order' => 0, 'x_mm' => 20, 'y_mm' => 100, 'length_mm' => 300, 'width_mm' => 35,
         ];
     }
 }

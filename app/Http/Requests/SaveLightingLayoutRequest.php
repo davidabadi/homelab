@@ -5,7 +5,9 @@ namespace App\Http\Requests;
 use App\Models\LightingComponentDefinition;
 use App\Models\LightingDesign;
 use App\Services\Lighting\LightingGeometry;
+use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -57,12 +59,14 @@ class SaveLightingLayoutRequest extends FormRequest
         return [
             'base_version' => ['required', 'integer', 'min:0'],
             'mutation_id' => ['required', 'uuid'],
+            'structured' => ['sometimes', 'boolean'],
             'design' => ['required', 'array:'.implode(',', LightingDesign::EDITABLE_FIELDS)],
             ...StoreLightingDesignRequest::designRules('design.', complete: true),
             'components' => ['present', 'array', 'list', 'max:2000'],
-            'components.*' => ['array:portable_id,component_definition_id,x_mm,y_mm,rotation,custom_label,rail_portable_id,notes,metadata'],
+            'components.*' => ['array:portable_id,component_definition_id,sort_order,x_mm,y_mm,rotation,custom_label,rail_portable_id,notes,metadata'],
             'components.*.portable_id' => ['required', 'uuid', 'distinct'],
             'components.*.component_definition_id' => ['required', 'integer', Rule::exists('lighting_component_definitions', 'id')],
+            'components.*.sort_order' => ['required_if:structured,true', 'integer', 'min:0', 'max:2000'],
             'components.*.x_mm' => $position,
             'components.*.y_mm' => $position,
             'components.*.rotation' => ['required', 'integer', Rule::in([0, 90, 180, 270])],
@@ -71,9 +75,10 @@ class SaveLightingLayoutRequest extends FormRequest
             'components.*.notes' => ['nullable', 'string', 'max:10000'],
             'components.*.metadata' => ['nullable', 'array'],
             'rails' => ['present', 'array', 'list', 'max:500'],
-            'rails.*' => ['array:portable_id,component_definition_id,x_mm,y_mm,length_mm,width_mm'],
+            'rails.*' => ['array:portable_id,component_definition_id,sort_order,x_mm,y_mm,length_mm,width_mm'],
             'rails.*.portable_id' => ['required', 'uuid', 'distinct'],
             'rails.*.component_definition_id' => $definition,
+            'rails.*.sort_order' => ['required_if:structured,true', 'integer', 'min:0', 'max:500'],
             'rails.*.x_mm' => $position,
             'rails.*.y_mm' => $position,
             'rails.*.length_mm' => ['required', 'numeric', 'min:0.01', 'max:1000000'],
@@ -115,7 +120,6 @@ class SaveLightingLayoutRequest extends FormRequest
                 if ($validator->errors()->isNotEmpty()) {
                     return;
                 }
-                StoreLightingDesignRequest::validateMargins($validator, $this->input('design'), 'design.');
                 $portableIds = [];
                 foreach (['components', 'rails', 'ducts', 'connections'] as $group) {
                     foreach ($this->input($group) as $index => $item) {
@@ -134,6 +138,17 @@ class SaveLightingLayoutRequest extends FormRequest
                 $definitions = LightingComponentDefinition::query()->whereIn('id', collect([
                     ...$this->input('components'), ...$this->input('rails'), ...$this->input('ducts'),
                 ])->pluck('component_definition_id')->filter()->unique())->get()->keyBy('id');
+
+                if ($this->boolean('structured')) {
+                    $this->normalizeRows($validator, $definitions);
+                    if ($validator->errors()->isNotEmpty()) {
+                        return;
+                    }
+                    $components = collect($this->array('components'))->keyBy('portable_id');
+                    $railIds = array_column($this->input('rails'), 'portable_id');
+                    $rails = collect($this->array('rails'))->keyBy('portable_id');
+                }
+                StoreLightingDesignRequest::validateMargins($validator, $this->input('design'), 'design.');
 
                 foreach (['components' => 'component', 'rails' => 'rail', 'ducts' => 'duct'] as $group => $kind) {
                     foreach ($this->input($group) as $index => $item) {
@@ -204,5 +219,49 @@ class SaveLightingLayoutRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    /** @param Collection<int, LightingComponentDefinition> $definitions */
+    private function normalizeRows(Validator $validator, Collection $definitions): void
+    {
+        $rowOrders = [];
+        $itemOrders = [];
+        foreach ($this->input('rails') as $index => $rail) {
+            if (isset($rowOrders[$rail['sort_order']])) {
+                $validator->errors()->add("rails.{$index}.sort_order", 'Each row must have a unique order.');
+            }
+            $rowOrders[$rail['sort_order']] = true;
+        }
+        foreach ($this->input('components') as $index => $component) {
+            $rowId = $component['rail_portable_id'] ?? 'unassigned';
+            if (isset($itemOrders[$rowId][$component['sort_order']])) {
+                $validator->errors()->add("components.{$index}.sort_order", 'Each device must have a unique order within its row.');
+            }
+            $itemOrders[$rowId][$component['sort_order']] = true;
+        }
+        $capacity = $this->input('design.width_mm') - $this->input('design.margin_left_mm') - $this->input('design.margin_right_mm');
+        foreach ($this->input('rails') as $index => $rail) {
+            $usedWidth = 0;
+            foreach ($this->input('components') as $component) {
+                if (($component['rail_portable_id'] ?? null) === $rail['portable_id']) {
+                    $usedWidth += $definitions->get($component['component_definition_id'])->width_mm;
+                }
+            }
+            if ($usedWidth > $capacity + 0.01) {
+                $validator->errors()->add("rails.{$index}.length_mm", 'The devices exceed this row’s usable width. Move a device to another row or increase the panel width.');
+            }
+        }
+        if ($validator->errors()->isNotEmpty()) {
+            return;
+        }
+
+        $layout = LightingRowLayout::normalize($validator->getData(), $definitions);
+        if ($layout['design']['height_mm'] > 1000000) {
+            $validator->errors()->add('design.height_mm', 'The rows exceed the supported panel height. Reduce the number of rows or device height.');
+
+            return;
+        }
+        $this->merge($layout);
+        $validator->setData($layout);
     }
 }

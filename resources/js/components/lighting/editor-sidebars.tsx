@@ -1,54 +1,241 @@
-import { Blocks, ListTree, SlidersHorizontal } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetHeader,
-    SheetTitle,
-} from '@/components/ui/sheet';
-import { ComponentPalette } from './component-palette';
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { DesignBom } from './design-bom';
-import { PropertiesInspector } from './properties-inspector';
+import { DeviceProperties } from './device-properties';
+import { NumberField, NotesField } from './inspector-fields';
 import type { LightingLayout } from './types';
 import type { LightingEditorController } from './use-lighting-editor';
+import { WireProperties } from './wire-properties';
 
-type SidebarProps = {
-    editor: LightingEditorController;
-    layout: LightingLayout;
-};
-
-function Inspector({
+export function EditorWorkspace({
     editor,
     layout,
-    tab,
-    onTabChange,
-}: SidebarProps & {
-    tab: 'properties' | 'bom';
-    onTabChange: (tab: 'properties' | 'bom') => void;
+    children,
+}: {
+    editor: LightingEditorController;
+    layout: LightingLayout;
+    children: ReactNode;
 }) {
+    const rows = [...layout.rails].sort(
+        (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+    );
+    const component =
+        editor.selection?.type === 'component'
+            ? layout.components.find(
+                  (item) => item.portable_id === editor.selection?.id,
+              )
+            : null;
+    const definition = component
+        ? layout.definitions.find(
+              (item) => item.id === component.component_definition_id,
+          )
+        : null;
+    const row =
+        editor.selection?.type === 'rail'
+            ? rows.find((item) => item.portable_id === editor.selection?.id)
+            : null;
+    const rowIndex = rows.findIndex(
+        (item) => item.portable_id === row?.portable_id,
+    );
+    const items = row
+        ? layout.components.filter(
+              (item) => item.rail_portable_id === row.portable_id,
+          )
+        : [];
+    const connection =
+        editor.selection?.type === 'connection'
+            ? layout.connections.find(
+                  (item) => item.portable_id === editor.selection?.id,
+              )
+            : null;
+    const inspectorVisible = Boolean(
+        (component && definition) || row || connection,
+    );
+
     return (
-        <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex gap-1 border-b px-3 py-2">
-                <Button
-                    size="sm"
-                    variant={tab === 'properties' ? 'secondary' : 'ghost'}
-                    onClick={() => onTabChange('properties')}
+        <div className="flex min-h-0 flex-1">
+            <main
+                aria-label="Panel editor canvas"
+                className="relative min-h-0 min-w-0 flex-1"
+            >
+                {children}
+            </main>
+            {inspectorVisible && (
+                <aside
+                    aria-label="Properties inspector"
+                    className="flex w-[292px] shrink-0 flex-col border-l border-white/10 bg-[#1b1e24]"
                 >
-                    <SlidersHorizontal className="size-3.5" /> Properties
-                </Button>
-                <Button
-                    size="sm"
-                    variant={tab === 'bom' ? 'secondary' : 'ghost'}
-                    onClick={() => onTabChange('bom')}
-                >
-                    <ListTree className="size-3.5" /> BOM
-                </Button>
-            </div>
-            <div className="min-h-0 flex-1 [scrollbar-width:thin] overflow-y-auto">
-                {tab === 'bom' ? (
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+                        <h2 className="text-sm font-semibold text-slate-200">
+                            {component
+                                ? 'Device details'
+                                : row
+                                  ? `Row ${String(rowIndex + 1).padStart(2, '0')}`
+                                  : 'Connection'}
+                        </h2>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 text-slate-500"
+                            aria-label="Close inspector"
+                            onClick={() => editor.setSelection(null)}
+                        >
+                            <X className="size-4" />
+                        </Button>
+                    </div>
+                    <div className="grid min-h-0 gap-5 overflow-y-auto p-5">
+                        {component && definition && (
+                            <>
+                                <DeviceProperties
+                                    component={component}
+                                    definition={definition}
+                                    layout={layout}
+                                    onUpdate={editor.updateComponent}
+                                    onDuplicate={editor.duplicateSelection}
+                                    onMove={editor.moveComponent}
+                                    onReorder={editor.reorderComponent}
+                                />
+                                <Button
+                                    variant="ghost"
+                                    className="justify-start text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                                    onClick={editor.deleteSelection}
+                                >
+                                    <Trash2 /> Delete device
+                                </Button>
+                            </>
+                        )}
+                        {row && (
+                            <>
+                                <div className="grid gap-2">
+                                    <p className="text-base font-semibold text-slate-100">
+                                        {items.length === 0
+                                            ? 'Room for your next device'
+                                            : `${items.length} ${items.length === 1 ? 'device' : 'devices'} in this row`}
+                                    </p>
+                                    <p className="text-sm leading-6 text-slate-400">
+                                        Devices stay aligned on the DIN rail.
+                                        Add a row whenever you need more room.
+                                    </p>
+                                </div>
+                                <Button
+                                    className="bg-blue-500 text-white hover:bg-blue-400"
+                                    onClick={() =>
+                                        editor.addRow(row.portable_id, 'above')
+                                    }
+                                >
+                                    <Plus /> Add row above
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                        editor.addRow(row.portable_id, 'below')
+                                    }
+                                >
+                                    <Plus /> Add row below
+                                </Button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={rowIndex === 0}
+                                        onClick={() =>
+                                            editor.moveRow(row.portable_id, -1)
+                                        }
+                                    >
+                                        <ArrowUp /> Up
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={rowIndex === rows.length - 1}
+                                        onClick={() =>
+                                            editor.moveRow(row.portable_id, 1)
+                                        }
+                                    >
+                                        <ArrowDown /> Down
+                                    </Button>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    disabled={items.length > 0}
+                                    className="justify-start text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                                    onClick={() =>
+                                        editor.removeRow(row.portable_id)
+                                    }
+                                >
+                                    <Trash2 /> Remove empty row
+                                </Button>
+                                {items.length > 0 && (
+                                    <p className="text-xs leading-5 text-slate-500">
+                                        Move or remove devices before deleting
+                                        this row.
+                                    </p>
+                                )}
+                            </>
+                        )}
+                        {connection && (
+                            <>
+                                <WireProperties
+                                    connection={connection}
+                                    layout={layout}
+                                    onUpdate={editor.updateConnection}
+                                />
+                                <Button
+                                    variant="ghost"
+                                    className="justify-start text-red-300"
+                                    onClick={editor.deleteSelection}
+                                >
+                                    <Trash2 /> Delete connection
+                                </Button>
+                            </>
+                        )}
+                    </div>
+                </aside>
+            )}
+        </div>
+    );
+}
+
+export function PanelSettingsDialog({
+    open,
+    onOpenChange,
+    summary,
+    editor,
+    layout,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    summary: boolean;
+    editor: LightingEditorController;
+    layout: LightingLayout;
+}) {
+    const availableWidth =
+        layout.design.width_mm -
+        layout.design.margin_left_mm -
+        layout.design.margin_right_mm;
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="lighting-editor-overlay dark max-h-[85svh] overflow-y-auto border-white/15 bg-[#1c2027] text-slate-100 sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>
+                        {summary ? 'Design summary' : 'Panel settings'}
+                    </DialogTitle>
+                    <DialogDescription className="text-slate-400">
+                        {summary
+                            ? 'Equipment and preserved wiring in this design.'
+                            : 'Choose your row capacity. Panel height grows automatically.'}
+                    </DialogDescription>
+                </DialogHeader>
+                {summary ? (
                     <DesignBom
                         components={layout.components}
                         rails={layout.rails}
@@ -57,122 +244,108 @@ function Inspector({
                         definitions={layout.definitions}
                     />
                 ) : (
-                    <PropertiesInspector
-                        layout={layout}
-                        selection={editor.selection}
-                        onUpdateDesign={editor.updateDesign}
-                        onUpdateComponent={editor.updateComponent}
-                        onUpdateRail={editor.updateRail}
-                        onUpdateDuct={editor.updateDuct}
-                        onUpdateConnection={editor.updateConnection}
-                        onDuplicateComponent={editor.duplicateSelection}
-                        onDeleteSelection={editor.deleteSelection}
-                        onDetachComponent={(id) =>
-                            editor.updateComponent(id, {
-                                rail_portable_id: null,
-                            })
-                        }
-                    />
-                )}
-            </div>
-        </div>
-    );
-}
-
-export function EditorWorkspace({
-    editor,
-    layout,
-    children,
-}: SidebarProps & { children: ReactNode }) {
-    const [paletteOpen, setPaletteOpen] = useState(false);
-    const [inspectorOpen, setInspectorOpen] = useState(false);
-    const [tab, setTab] = useState<'properties' | 'bom'>('properties');
-    const palette = (
-        <ComponentPalette
-            definitions={editor.definitions}
-            onPlace={editor.addDefinition}
-            onAddRail={editor.addRail}
-            onAddDuct={editor.addDuct}
-        />
-    );
-    const inspector = (
-        <Inspector
-            editor={editor}
-            layout={layout}
-            tab={tab}
-            onTabChange={setTab}
-        />
-    );
-
-    return (
-        <>
-            <div className="flex shrink-0 justify-between border-b px-3 py-1.5 lg:hidden">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPaletteOpen(true)}
-                >
-                    <Blocks /> Components
-                </Button>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setInspectorOpen(true)}
-                >
-                    <SlidersHorizontal /> Properties / BOM
-                </Button>
-            </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-                <aside
-                    aria-label="Component palette"
-                    className="hidden min-h-0 [scrollbar-width:thin] overflow-y-auto border-r lg:block"
-                >
-                    {palette}
-                </aside>
-                <main
-                    aria-label="Panel editor canvas"
-                    className="relative min-h-0 min-w-0"
-                >
-                    {children}
-                </main>
-                <aside
-                    aria-label="Properties inspector"
-                    className="hidden min-h-0 flex-col border-l lg:flex"
-                >
-                    {inspector}
-                </aside>
-            </div>
-            <Sheet open={paletteOpen} onOpenChange={setPaletteOpen}>
-                <SheetContent
-                    side="left"
-                    className="flex w-80 flex-col gap-0 p-0"
-                >
-                    <SheetHeader className="border-b p-4">
-                        <SheetTitle>Component palette</SheetTitle>
-                        <SheetDescription>
-                            Add equipment to the panel.
-                        </SheetDescription>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                        {palette}
+                    <div className="grid gap-5">
+                        <div className="grid gap-3">
+                            <p className="text-sm font-medium">Row capacity</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[18, 24, 36].map((modules) => (
+                                    <Button
+                                        key={modules}
+                                        variant="outline"
+                                        aria-pressed={
+                                            Math.abs(
+                                                availableWidth - modules * 18,
+                                            ) < 1
+                                        }
+                                        className={
+                                            Math.abs(
+                                                availableWidth - modules * 18,
+                                            ) < 1
+                                                ? 'border-blue-400/50 bg-blue-500/10 text-blue-200'
+                                                : 'border-white/15 bg-transparent'
+                                        }
+                                        onClick={() =>
+                                            editor.updateDesign({
+                                                width_mm:
+                                                    modules * 18 +
+                                                    layout.design
+                                                        .margin_left_mm +
+                                                    layout.design
+                                                        .margin_right_mm,
+                                            })
+                                        }
+                                    >
+                                        {modules} modules
+                                    </Button>
+                                ))}
+                            </div>
+                            <p className="text-xs leading-5 text-slate-500">
+                                Physical dimensions stay with your catalog
+                                devices. Cards keep a readable size in the
+                                builder.
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 bg-black/10 p-4">
+                            <div>
+                                <p className="text-xs text-slate-500">
+                                    Enclosure width
+                                </p>
+                                <p className="mt-1 text-sm font-medium">
+                                    {layout.design.width_mm} mm
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500">
+                                    Automatic height
+                                </p>
+                                <p className="mt-1 text-sm font-medium">
+                                    {layout.design.height_mm} mm
+                                </p>
+                            </div>
+                        </div>
+                        <details className="rounded-lg border border-white/10 p-4">
+                            <summary className="cursor-pointer text-sm font-medium">
+                                Advanced dimensions
+                            </summary>
+                            <div className="mt-4 grid gap-4">
+                                <NumberField
+                                    label="Enclosure width (mm)"
+                                    value={layout.design.width_mm}
+                                    min={1}
+                                    max={10000}
+                                    onChange={(value) =>
+                                        value !== null &&
+                                        editor.updateDesign({ width_mm: value })
+                                    }
+                                />
+                                <NumberField
+                                    label="Enclosure depth (mm, optional)"
+                                    value={layout.design.depth_mm}
+                                    nullable
+                                    min={1}
+                                    onChange={(depth_mm) =>
+                                        editor.updateDesign({ depth_mm })
+                                    }
+                                />
+                            </div>
+                        </details>
+                        <NotesField
+                            value={layout.design.notes}
+                            onChange={(notes) => editor.updateDesign({ notes })}
+                        />
+                        {layout.ducts.length > 0 && (
+                            <p className="text-sm leading-5 text-slate-400">
+                                {layout.ducts.length} existing wire{' '}
+                                {layout.ducts.length === 1
+                                    ? 'duct is'
+                                    : 'ducts are'}{' '}
+                                preserved in this design and available in the
+                                wiring view.
+                            </p>
+                        )}
                     </div>
-                </SheetContent>
-            </Sheet>
-            <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-                <SheetContent
-                    side="right"
-                    className="flex w-80 flex-col gap-0 p-0"
-                >
-                    <SheetHeader className="border-b p-4">
-                        <SheetTitle>Panel properties</SheetTitle>
-                        <SheetDescription>
-                            Physical dimensions, wiring, and component
-                            quantities.
-                        </SheetDescription>
-                    </SheetHeader>
-                    {inspector}
-                </SheetContent>
-            </Sheet>
-        </>
+                )}
+            </DialogContent>
+        </Dialog>
     );
 }

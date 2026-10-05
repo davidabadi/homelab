@@ -6,6 +6,7 @@ use App\Http\Requests\StoreLightingDesignRequest;
 use App\Http\Requests\UpdateLightingDesignRequest;
 use App\Services\Lighting\LightingDesignPresenter;
 use App\Services\Lighting\LightingLayoutService;
+use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,7 +38,14 @@ class LightingDesignController extends Controller
 
     public function store(StoreLightingDesignRequest $request, LightingDesignPresenter $presenter): JsonResponse
     {
-        $design = $request->user()->lightingDesigns()->create($request->validated())->refresh();
+        $design = DB::transaction(function () use ($request) {
+            $design = $request->user()->lightingDesigns()->create([
+                ...LightingRowLayout::DESIGN_DEFAULTS, ...$request->validated(),
+            ])->refresh();
+            LightingRowLayout::createDefaultRows($design);
+
+            return $design->loadCount(['components', 'rails', 'ducts', 'connections']);
+        });
 
         return response()->json(['design' => $presenter->design($design)], 201);
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Services\Lighting\LightingGeometry;
+use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -57,7 +58,10 @@ class StoreLightingDesignRequest extends FormRequest
     /** @return array<string, mixed> */
     protected function validatedDesignInput(): array
     {
-        return $this->only(['width_mm', 'height_mm', 'margin_left_mm', 'margin_right_mm', 'margin_top_mm', 'margin_bottom_mm']);
+        return [
+            ...LightingRowLayout::DESIGN_DEFAULTS,
+            ...$this->only(['width_mm', 'height_mm', 'margin_left_mm', 'margin_right_mm', 'margin_top_mm', 'margin_bottom_mm']),
+        ];
     }
 
     /** @param array<string, mixed> $design */

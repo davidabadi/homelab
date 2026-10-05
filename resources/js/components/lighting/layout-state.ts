@@ -16,6 +16,7 @@ export type LightingSnapshot = Omit<
     LightingLayout,
     'definitions' | 'design'
 > & {
+    structured: boolean;
     design: Omit<
         LightingLayout['design'],
         'id' | 'save_version' | 'updated_at'
@@ -38,6 +39,7 @@ export function layoutSnapshot(layout: LightingLayout): LightingSnapshot {
     };
 
     return {
+        structured: true,
         design,
         components: layout.components,
         rails: layout.rails,

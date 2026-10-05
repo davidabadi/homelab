@@ -39,7 +39,8 @@ it('creates lists renames and deletes private designs with physical defaults', f
     $user = User::factory()->create();
     $created = $this->actingAs($user)->postJson(route('lighting.designs.store'), ['name' => 'Main panel'])
         ->assertCreated()->assertJsonPath('design.name', 'Main panel')
-        ->assertJsonPath('design.width_mm', 600)->assertJsonPath('design.height_mm', 800)
+        ->assertJsonPath('design.width_mm', 364)->assertJsonPath('design.height_mm', 320)
+        ->assertJsonPath('design.rails_count', 2)
         ->assertJsonPath('design.grid_size_mm', 5)->assertJsonPath('design.snap_to_grid', true);
     $design = LightingDesign::query()->findOrFail($created->json('design.id'));
 

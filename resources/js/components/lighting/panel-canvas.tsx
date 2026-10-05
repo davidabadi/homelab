@@ -56,6 +56,7 @@ export type PanelCanvasProps = {
     showGrid: boolean;
     showWires: boolean;
     showLabels: boolean;
+    layoutReadOnly?: boolean;
 };
 
 function selectionFromId(id: string): LightingSelection {
@@ -81,6 +82,7 @@ export function PanelCanvas({
     showGrid,
     showWires,
     showLabels,
+    layoutReadOnly = true,
 }: PanelCanvasProps) {
     const [instance, setInstance] = useState<PhysicalFlowInstance | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -321,6 +323,10 @@ export function PanelCanvas({
     }
 
     function moveNodes(dragged: Node[], commit: boolean) {
+        if (layoutReadOnly) {
+            return;
+        }
+
         let next = layout;
         const movingRails = new Set(
             dragged
@@ -420,6 +426,11 @@ export function PanelCanvas({
 
     function drop(event: DragEvent<HTMLDivElement>) {
         event.preventDefault();
+
+        if (layoutReadOnly) {
+            return;
+        }
+
         const definitionId = Number(
             event.dataTransfer.getData('application/lighting-definition') ||
                 event.dataTransfer.getData('application/lighting-component'),
@@ -456,6 +467,7 @@ export function PanelCanvas({
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 nodeOrigin={[0, 0]}
+                nodesDraggable={!layoutReadOnly}
                 connectionMode={ConnectionMode.Loose}
                 onInit={initialize}
                 onMove={(_event, viewport) => onZoomChange?.(viewport.zoom)}
@@ -497,9 +509,9 @@ export function PanelCanvas({
                 elevateNodesOnSelect={false}
                 proOptions={{ hideAttribution: true }}
             />
-            <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-24px)] rounded border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">
-                Scroll to zoom · middle/right drag to pan · Shift-click to
-                select · orange dashed line = usable area
+            <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-24px)] rounded border bg-background/90 px-3 py-2 text-xs text-muted-foreground">
+                Connect terminals to add wiring · Scroll to zoom · Middle/right
+                drag to pan
                 {selection?.type === 'connection' && (
                     <span className="block">
                         Wire: drag dots to route · double-click segment dot to

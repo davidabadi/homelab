@@ -1,72 +1,137 @@
-import { Copy, Link2Off } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-    NumberField,
-    TextField,
-    NotesField,
-    ReadOnlyValue,
-} from './inspector-fields';
-import type { PropertiesInspectorProps } from './properties-inspector';
-import type { PlacedComponent, ComponentDefinition } from './types';
+import { Input } from '@/components/ui/input';
+import { ComponentImage } from './component-image';
+import { NotesField, ReadOnlyValue } from './inspector-fields';
+import type {
+    ComponentDefinition,
+    LightingLayout,
+    PlacedComponent,
+} from './types';
+
 export function DeviceProperties({
     component,
     definition,
+    layout,
     onUpdate,
     onDuplicate,
-    onDetach,
+    onMove,
+    onReorder,
 }: {
     component: PlacedComponent;
     definition: ComponentDefinition;
-    onUpdate: PropertiesInspectorProps['onUpdateComponent'];
-    onDuplicate: PropertiesInspectorProps['onDuplicateComponent'];
-    onDetach: PropertiesInspectorProps['onDetachComponent'];
+    layout?: LightingLayout;
+    onUpdate: (id: string, patch: Partial<PlacedComponent>) => void;
+    onDuplicate: (id: string) => void;
+    onDetach?: (id: string) => void;
+    onMove?: (id: string, rowId: string) => void;
+    onReorder?: (id: string, direction: -1 | 1) => void;
 }) {
+    const rows = [...(layout?.rails ?? [])].sort(
+        (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+    );
+    const items = (layout?.components ?? [])
+        .filter((item) => item.rail_portable_id === component.rail_portable_id)
+        .sort(
+            (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+        );
+    const index = items.findIndex(
+        (item) => item.portable_id === component.portable_id,
+    );
+
     return (
         <>
-            <div className="grid gap-1">
-                <p className="text-sm font-semibold">
+            <div className="mx-auto h-32 w-32 rounded-xl bg-[#e7e9ed] p-3">
+                <ComponentImage definition={definition} />
+            </div>
+            <div className="grid gap-2">
+                <p className="text-base leading-6 font-semibold text-slate-100">
                     {definition.display_name}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs leading-5 break-words text-slate-400">
                     {definition.manufacturer} · {definition.model} · rev{' '}
                     {definition.revision}
                 </p>
-                {(definition.metadata.sample_dimensions === true ||
-                    definition.metadata.dimensions_status === 'sample') && (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                        Sample dimensions. Verify before fabrication.
-                    </p>
-                )}
             </div>
-            <TextField
-                label="Custom label"
-                value={component.custom_label}
-                onChange={(custom_label) =>
-                    onUpdate(component.portable_id, {
-                        custom_label,
-                    })
-                }
-                placeholder={definition.display_name}
-            />
-            <div className="grid grid-cols-2 gap-3">
-                <NumberField
-                    label="X (mm)"
-                    value={component.x_mm}
-                    onChange={(value) =>
-                        value !== null &&
-                        onUpdate(component.portable_id, { x_mm: value })
+            <label className="grid gap-2 text-sm text-slate-300">
+                Custom label
+                <Input
+                    className="h-10 border-white/15 bg-white/5 text-sm"
+                    value={component.custom_label ?? ''}
+                    placeholder={definition.display_name}
+                    onChange={(event) =>
+                        onUpdate(component.portable_id, {
+                            custom_label: event.target.value || null,
+                        })
                     }
                 />
-                <NumberField
-                    label="Y (mm)"
-                    value={component.y_mm}
-                    onChange={(value) =>
-                        value !== null &&
-                        onUpdate(component.portable_id, { y_mm: value })
-                    }
+            </label>
+            {layout && onMove && definition.mounting_type === 'din-rail' && (
+                <div className="grid gap-3">
+                    <label className="grid gap-2 text-sm text-slate-300">
+                        Move to row
+                        <select
+                            className="h-10 rounded-md border border-white/15 bg-[#252a33] px-3 text-sm text-slate-100 outline-none focus:border-blue-400"
+                            value={component.rail_portable_id ?? ''}
+                            onChange={(event) =>
+                                onMove(
+                                    component.portable_id,
+                                    event.target.value,
+                                )
+                            }
+                        >
+                            {!component.rail_portable_id && (
+                                <option value="" disabled>
+                                    Choose a row
+                                </option>
+                            )}
+                            {rows.map((row, rowIndex) => (
+                                <option
+                                    key={row.portable_id}
+                                    value={row.portable_id}
+                                >
+                                    Row {String(rowIndex + 1).padStart(2, '0')}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    {component.rail_portable_id && onReorder && (
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={index <= 0}
+                                onClick={() =>
+                                    onReorder(component.portable_id, -1)
+                                }
+                            >
+                                <ArrowLeft /> Move left
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={index >= items.length - 1}
+                                onClick={() =>
+                                    onReorder(component.portable_id, 1)
+                                }
+                            >
+                                <ArrowRight /> Move right
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            )}
+            {definition.mounting_type !== 'din-rail' && (
+                <p className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm leading-5 text-slate-400">
+                    This device uses {definition.mounting_type} mounting and
+                    stays in the unassigned area.
+                </p>
+            )}
+            <dl className="grid gap-3 rounded-xl border border-white/10 bg-black/10 p-4">
+                <ReadOnlyValue
+                    label="Manufacturer"
+                    value={definition.manufacturer}
                 />
-            </div>
-            <dl className="grid gap-2 rounded-lg border bg-muted/20 p-3">
                 <ReadOnlyValue
                     label="Width"
                     value={`${definition.width_mm} mm`}
@@ -83,10 +148,6 @@ export function DeviceProperties({
                             : `${definition.depth_mm} mm`
                     }
                 />
-                <ReadOnlyValue
-                    label="Mounting"
-                    value={definition.mounting_type}
-                />
                 {definition.din_modules !== null && (
                     <ReadOnlyValue
                         label="DIN modules"
@@ -94,80 +155,35 @@ export function DeviceProperties({
                     />
                 )}
             </dl>
-            <label className="grid gap-1.5 text-xs text-muted-foreground">
-                Rotation
-                <select
-                    value={component.rotation}
-                    className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
-                    disabled={component.rail_portable_id !== null}
-                    onChange={(event) =>
-                        onUpdate(component.portable_id, {
-                            rotation: Number(event.target.value),
-                        })
-                    }
-                >
-                    {[0, 90, 180, 270].map((angle) => (
-                        <option key={angle} value={angle}>
-                            {angle}°
-                        </option>
-                    ))}
-                </select>
-            </label>
-            {component.rail_portable_id && (
-                <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-                    <p className="text-xs text-muted-foreground">
-                        Attached to a DIN rail. Drag horizontally to slide along
-                        it.
-                    </p>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onDetach(component.portable_id)}
-                    >
-                        <Link2Off /> Detach from rail
-                    </Button>
-                </div>
-            )}
-            <div className="grid gap-2">
-                <h3 className="text-xs font-semibold">
-                    Terminals ({definition.terminals.length})
-                </h3>
-                {definition.metadata.sample_terminal_positions === true && (
-                    <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-400">
-                        Terminal positions are schematic samples. Check the
-                        product datasheet before fabrication.
-                    </p>
-                )}
-                {definition.terminals.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                        No terminals defined for this catalog revision.
-                    </p>
-                ) : (
-                    <ul className="grid gap-1.5">
-                        {definition.terminals.map((terminal) => (
-                            <li
-                                key={terminal.key}
-                                className="flex justify-between gap-2 rounded bg-muted/40 px-2 py-1.5 text-xs"
-                            >
-                                <span className="font-mono font-medium">
-                                    {terminal.label}
-                                </span>
-                                <span className="truncate text-[10px] text-muted-foreground">
-                                    {terminal.purpose || terminal.side}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
             <NotesField
                 value={component.notes}
-                onChange={(notes) =>
-                    onUpdate(component.portable_id, {
-                        notes,
-                    })
-                }
+                onChange={(notes) => onUpdate(component.portable_id, { notes })}
             />
+            <details className="rounded-lg border border-white/10 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-300">
+                    Terminals ({definition.terminals.length})
+                </summary>
+                <div className="mt-3 grid gap-2">
+                    {definition.terminals.length === 0 && (
+                        <p className="text-xs text-slate-500">
+                            No terminals in this catalog revision.
+                        </p>
+                    )}
+                    {definition.terminals.map((terminal) => (
+                        <div
+                            key={terminal.key}
+                            className="flex justify-between gap-3 rounded bg-white/5 px-2 py-1.5 text-xs"
+                        >
+                            <span className="font-medium text-slate-300">
+                                {terminal.label}
+                            </span>
+                            <span className="text-slate-500">
+                                {terminal.purpose || terminal.side}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </details>
             <Button
                 variant="outline"
                 size="sm"

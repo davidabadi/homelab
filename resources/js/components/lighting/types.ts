@@ -54,6 +54,7 @@ export type LightingDesign = {
 
 export type PlacedComponent = MmPoint & {
     portable_id: string;
+    sort_order?: number;
     component_definition_id: number;
     rotation: number;
     custom_label: string | null;
@@ -64,6 +65,7 @@ export type PlacedComponent = MmPoint & {
 
 export type DesignRail = MmPoint & {
     portable_id: string;
+    sort_order?: number;
     component_definition_id: number | null;
     length_mm: number;
     width_mm: number;

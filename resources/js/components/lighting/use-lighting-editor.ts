@@ -17,6 +17,16 @@ import {
     placeDefinition,
 } from './layout-state';
 import type { LightingSnapshot } from './layout-state';
+import {
+    insertPanelRow,
+    movePanelDevice,
+    movePanelRow,
+    normalizePanelLayout,
+    panelRowItems,
+    placePanelDevice,
+    removePanelRow,
+    reorderPanelDevice,
+} from './panel-layout';
 import { LightingSaveQueue } from './save-queue';
 import type { SaveAcknowledgement, SaveState } from './save-queue';
 import type {
@@ -27,7 +37,6 @@ import type {
     LightingDesign,
     LightingLayout,
     LightingSelection,
-    MmPoint,
     PanelCanvasApi,
     PlacedComponent,
 } from './types';
@@ -38,6 +47,8 @@ export function useLightingEditor(designId: number) {
     const [layout, setLayout] = useState<LightingLayout | null>(null);
     const [definitions, setDefinitions] = useState<ComponentDefinition[]>([]);
     const [selection, setSelection] = useState<LightingSelection>(null);
+    const [activeRowId, setActiveRowId] = useState<string | null>(null);
+    const [operationError, setOperationError] = useState<string | null>(null);
     const [selectedObjects, setSelectedObjects] = useState<
         NonNullable<LightingSelection>[]
     >([]);
@@ -50,7 +61,7 @@ export function useLightingEditor(designId: number) {
     const [history, setHistory] = useState<History>({ past: [], future: [] });
     const [canvasApi, setCanvasApi] = useState<PanelCanvasApi | null>(null);
     const [zoom, setZoom] = useState(1);
-    const [showGrid, setShowGrid] = useState(true);
+    const [showGrid, setShowGrid] = useState(false);
     const [showWires, setShowWires] = useState(true);
     const [showLabels, setShowLabels] = useState(true);
     const [leaveDialog, setLeaveDialog] = useState(false);
@@ -135,12 +146,27 @@ export function useLightingEditor(designId: number) {
     }, [designId]);
 
     const changeLayout = useCallback(
-        (next: LightingLayout, commit = true, immediate = false) => {
+        (
+            candidate: LightingLayout,
+            commit = true,
+            immediate = false,
+        ): boolean => {
+            let next: LightingLayout;
+
+            try {
+                next = normalizePanelLayout(candidate);
+            } catch (caught) {
+                setOperationError(lightingErrorMessage(caught));
+
+                return false;
+            }
+
+            setOperationError(null);
             layoutRef.current = next;
             setLayout(next);
 
             if (!commit) {
-                return;
+                return true;
             }
 
             const previous = committedRef.current;
@@ -157,6 +183,8 @@ export function useLightingEditor(designId: number) {
                 committedRef.current = next;
                 queueRef.current?.update(layoutSnapshot(next), immediate);
             }
+
+            return true;
         },
         [],
     );
@@ -258,14 +286,14 @@ export function useLightingEditor(designId: number) {
             return;
         }
 
-        const restored = {
+        const restored = normalizePanelLayout({
             ...previous,
             design: {
                 ...previous.design,
                 save_version: current.design.save_version,
                 updated_at: current.design.updated_at,
             },
-        };
+        });
         setHistory({
             past: history.past.slice(0, -1),
             future: [current, ...history.future].slice(0, 50),
@@ -285,14 +313,14 @@ export function useLightingEditor(designId: number) {
             return;
         }
 
-        const restored = {
+        const restored = normalizePanelLayout({
             ...next,
             design: {
                 ...next.design,
                 save_version: current.design.save_version,
                 updated_at: current.design.updated_at,
             },
-        };
+        });
         setHistory({
             past: [...history.past, current].slice(-50),
             future: history.future.slice(1),
@@ -316,7 +344,31 @@ export function useLightingEditor(designId: number) {
             return;
         }
 
-        changeLayout(deleteLayoutObjects(current, objects), true, true);
+        if (
+            objects.some(
+                (object) =>
+                    object.type === 'rail' &&
+                    panelRowItems(current, object.id).some(
+                        (item) =>
+                            !objects.some(
+                                (selected) =>
+                                    selected.type === 'component' &&
+                                    selected.id === item.portable_id,
+                            ),
+                    ),
+            )
+        ) {
+            setOperationError(
+                'Only empty rows can be removed. Move or remove the devices first.',
+            );
+
+            return;
+        }
+
+        if (!changeLayout(deleteLayoutObjects(current, objects), true, true)) {
+            return;
+        }
+
         setSelection(null);
         setSelectedObjects([]);
     }, [changeLayout, selectedObjects, selection]);
@@ -332,8 +384,60 @@ export function useLightingEditor(designId: number) {
                 return;
             }
 
-            const result = duplicateLayoutObject(current, selected);
-            changeLayout(result.layout, true, true);
+            let result: ReturnType<typeof placePanelDevice>;
+            const component =
+                selected.type === 'component'
+                    ? current.components.find(
+                          (item) => item.portable_id === selected.id,
+                      )
+                    : undefined;
+            const definition = current.definitions.find(
+                (item) => item.id === component?.component_definition_id,
+            );
+
+            try {
+                result =
+                    component?.rail_portable_id && definition
+                        ? placePanelDevice(
+                              current,
+                              definition,
+                              component.rail_portable_id,
+                              panelRowItems(
+                                  current,
+                                  component.rail_portable_id,
+                              ).findIndex(
+                                  (item) =>
+                                      item.portable_id ===
+                                      component.portable_id,
+                              ) + 1,
+                          )
+                        : duplicateLayoutObject(current, selected);
+
+                if (component) {
+                    result.layout.components = result.layout.components.map(
+                        (item) =>
+                            item.portable_id === result.selection?.id
+                                ? {
+                                      ...item,
+                                      custom_label: component.custom_label,
+                                      notes: component.notes,
+                                      metadata: structuredClone(
+                                          component.metadata,
+                                      ),
+                                  }
+                                : item,
+                    );
+                }
+            } catch (caught) {
+                setOperationError(lightingErrorMessage(caught));
+
+                return;
+            }
+
+            if (!changeLayout(result.layout, true, true)) {
+                return;
+            }
+
             setSelection(result.selection);
             setSelectedObjects(result.selection ? [result.selection] : []);
         },
@@ -381,26 +485,50 @@ export function useLightingEditor(designId: number) {
     }, [undo, redo, duplicateSelection, deleteSelection]);
 
     const addDefinition = useCallback(
-        (definition: ComponentDefinition, point?: MmPoint) => {
+        (
+            definition: ComponentDefinition,
+            rowId?: string,
+            index?: number,
+        ): boolean => {
             const current = layoutRef.current;
 
             if (!current) {
-                return;
+                return false;
             }
 
-            const result = placeDefinition(
-                current,
-                definition,
-                point ?? {
-                    x_mm: current.design.margin_left_mm + 20,
-                    y_mm: current.design.margin_top_mm + 20,
-                },
-            );
-            changeLayout(result.layout, true, true);
+            const target =
+                rowId ??
+                (current.rails.some((row) => row.portable_id === activeRowId)
+                    ? activeRowId
+                    : current.rails[0]?.portable_id);
+
+            if (!target) {
+                setOperationError('Add a row before placing a device.');
+
+                return false;
+            }
+
+            let result: ReturnType<typeof placePanelDevice>;
+
+            try {
+                result = placePanelDevice(current, definition, target, index);
+            } catch (caught) {
+                setOperationError(lightingErrorMessage(caught));
+
+                return false;
+            }
+
+            if (!changeLayout(result.layout, true, true)) {
+                return false;
+            }
+
+            setActiveRowId(target);
             setSelection(result.selection);
             setSelectedObjects(result.selection ? [result.selection] : []);
+
+            return true;
         },
-        [changeLayout],
+        [changeLayout, activeRowId],
     );
 
     function updateDesign(attributes: Partial<LightingDesign>) {
@@ -449,7 +577,7 @@ export function useLightingEditor(designId: number) {
                     : item,
             ),
         };
-        changeLayout(rerouteConnections(reconcileRailAttachments(next)));
+        changeLayout(next);
     }
 
     function updateRail(id: string, attributes: Partial<DesignRail>) {
@@ -558,7 +686,6 @@ export function useLightingEditor(designId: number) {
                     );
                     const empty =
                         recovery.components.length === 0 &&
-                        recovery.rails.length === 0 &&
                         recovery.ducts.length === 0 &&
                         recovery.connections.length === 0;
 
@@ -588,14 +715,168 @@ export function useLightingEditor(designId: number) {
         [],
     );
 
-    function addRail() {
-        const template = definitions.find(
-            (definition) => definition.kind === 'rail',
-        );
+    function selectRow(id: string) {
+        setActiveRowId(id);
+        setSelection({ type: 'rail', id });
+        setSelectedObjects([]);
+    }
 
-        if (template) {
-            addDefinition(template);
+    function selectObject(next: LightingSelection) {
+        setSelection(next);
+        setSelectedObjects(next ? [next] : []);
+
+        const rowId =
+            next?.type === 'rail'
+                ? next.id
+                : next?.type === 'component'
+                  ? layoutRef.current?.components.find(
+                        (item) => item.portable_id === next.id,
+                    )?.rail_portable_id
+                  : null;
+
+        if (rowId) {
+            setActiveRowId(rowId);
         }
+    }
+
+    function addRow(
+        referenceId?: string,
+        position: 'above' | 'below' = 'below',
+    ): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        try {
+            const next = insertPanelRow(current, referenceId, position);
+
+            if (!changeLayout(next, true, true)) {
+                return false;
+            }
+
+            const added = next.rails.find(
+                (row) =>
+                    !current.rails.some(
+                        (previous) => previous.portable_id === row.portable_id,
+                    ),
+            );
+
+            if (added) {
+                selectRow(added.portable_id);
+            }
+
+            return true;
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+
+            return false;
+        }
+    }
+
+    function removeRow(rowId: string): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        try {
+            const next = removePanelRow(current, rowId);
+
+            if (!changeLayout(next, true, true)) {
+                return false;
+            }
+
+            setActiveRowId(next.rails[0]?.portable_id ?? null);
+            setSelection(null);
+            setSelectedObjects([]);
+
+            return true;
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+
+            return false;
+        }
+    }
+
+    function moveRow(rowId: string, direction: -1 | 1): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        try {
+            return changeLayout(
+                movePanelRow(current, rowId, direction),
+                true,
+                true,
+            );
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+
+            return false;
+        }
+    }
+
+    function moveComponent(
+        componentId: string,
+        rowId: string,
+        index?: number,
+    ): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        try {
+            if (
+                !changeLayout(
+                    movePanelDevice(current, componentId, rowId, index),
+                    true,
+                    true,
+                )
+            ) {
+                return false;
+            }
+
+            setActiveRowId(rowId);
+            setSelection({ type: 'component', id: componentId });
+            setSelectedObjects([]);
+
+            return true;
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+
+            return false;
+        }
+    }
+
+    function reorderComponent(componentId: string, direction: -1 | 1): boolean {
+        const current = layoutRef.current;
+
+        if (!current) {
+            return false;
+        }
+
+        try {
+            return changeLayout(
+                reorderPanelDevice(current, componentId, direction),
+                true,
+                true,
+            );
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+
+            return false;
+        }
+    }
+
+    function addRail() {
+        addRow();
     }
 
     function addDuct(orientation: DesignDuct['orientation']) {
@@ -625,13 +906,13 @@ export function useLightingEditor(designId: number) {
         setSelectedObjects(result.selection ? [result.selection] : []);
     }
 
-    function dropDefinition(id: number, point: MmPoint) {
+    function dropDefinition(id: number) {
         const definition = layoutRef.current?.definitions.find(
             (candidate) => candidate.id === id,
         );
 
         if (definition) {
-            addDefinition(definition, point);
+            addDefinition(definition);
         }
     }
 
@@ -662,15 +943,34 @@ export function useLightingEditor(designId: number) {
         layout,
         definitions,
         selection,
-        setSelection,
+        setSelection: selectObject,
+        selectedRowId:
+            (selection?.type === 'component'
+                ? layout?.components.find(
+                      (item) => item.portable_id === selection.id,
+                  )?.rail_portable_id
+                : selection?.type === 'rail'
+                  ? selection.id
+                  : null) ??
+            (layout?.rails.some((row) => row.portable_id === activeRowId)
+                ? activeRowId
+                : (layout?.rails[0]?.portable_id ?? null)),
+        selectRow,
+        operationError,
+        clearOperationError: () => setOperationError(null),
         setSelectedObjects,
         persistence,
         loadError,
-        error: persistence.error
-            ? [lightingErrorMessage(persistence.error), recoveryCleanupError]
-                  .filter(Boolean)
-                  .join(' ')
-            : null,
+        error:
+            [
+                operationError,
+                persistence.error
+                    ? lightingErrorMessage(persistence.error)
+                    : null,
+                recoveryCleanupError,
+            ]
+                .filter(Boolean)
+                .join(' ') || null,
         conflict:
             persistence.error instanceof LightingApiError &&
             persistence.error.status === 409,
@@ -693,6 +993,11 @@ export function useLightingEditor(designId: number) {
         redo,
         changeLayout,
         addDefinition,
+        addRow,
+        removeRow,
+        moveRow,
+        moveComponent,
+        reorderComponent,
         addRail,
         addDuct,
         dropDefinition,

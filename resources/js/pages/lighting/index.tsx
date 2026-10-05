@@ -6,9 +6,8 @@ import {
     LoaderCircle,
     Pencil,
     Plus,
-    Ruler,
+    Rows3,
     Trash2,
-    Unplug,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -53,22 +52,17 @@ type DesignSummary = {
     grid_size_mm: number;
     notes: string | null;
     components_count: number;
+    rails_count: number;
     connections_count: number;
     updated_at: string;
 };
 
 type DesignForm = {
     name: string;
-    width_mm: string;
-    height_mm: string;
-    depth_mm: string;
 };
 
 const initialForm: DesignForm = {
     name: '',
-    width_mm: '600',
-    height_mm: '800',
-    depth_mm: '',
 };
 
 export default function LightingIndex() {
@@ -119,9 +113,6 @@ export default function LightingIndex() {
         setSelected(design);
         setForm({
             name: design.name,
-            width_mm: String(design.width_mm),
-            height_mm: String(design.height_mm),
-            depth_mm: design.depth_mm === null ? '' : String(design.depth_mm),
         });
         setFormError(null);
         setDialog('rename');
@@ -137,20 +128,7 @@ export default function LightingIndex() {
                 selected ? update.url(selected.id) : store.url(),
                 {
                     method: selected ? 'PATCH' : 'POST',
-                    body: JSON.stringify(
-                        selected
-                            ? { name: form.name.trim() }
-                            : {
-                                  name: form.name.trim(),
-                                  width_mm: Number(form.width_mm),
-                                  height_mm: Number(form.height_mm),
-                                  depth_mm: form.depth_mm
-                                      ? Number(form.depth_mm)
-                                      : null,
-                                  grid_size_mm: 5,
-                                  notes: null,
-                              },
-                    ),
+                    body: JSON.stringify({ name: form.name.trim() }),
                 },
             );
             setDialog(null);
@@ -224,8 +202,8 @@ export default function LightingIndex() {
                             Panel designs
                         </h1>
                         <p className="max-w-lg text-sm text-muted-foreground">
-                            Plan your enclosure, place real equipment, and
-                            document every cable run.
+                            Add your devices, arrange them on DIN rows, and
+                            build a panel that grows with your design.
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -277,8 +255,8 @@ export default function LightingIndex() {
                                 Your first panel starts here
                             </h2>
                             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                                Create a design with your enclosure dimensions.
-                                Equipment and cable routes will save
+                                Start with two DIN rows. Add devices and grow
+                                your panel as you go. Every change saves
                                 automatically.
                             </p>
                         </div>
@@ -303,10 +281,11 @@ export default function LightingIndex() {
                                             {design.name}
                                         </Link>
                                         <Badge variant="secondary">
-                                            <Ruler className="size-3" /> mm
+                                            <Rows3 className="size-3" />{' '}
+                                            {design.rails_count} rows
                                         </Badge>
                                     </div>
-                                    <p className="font-mono text-sm text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground">
                                         {design.width_mm} × {design.height_mm}
                                         {design.depth_mm !== null
                                             ? ` × ${design.depth_mm}`
@@ -320,16 +299,16 @@ export default function LightingIndex() {
                                             {design.components_count}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            Placed components
+                                            Devices
                                         </p>
                                     </div>
                                     <div>
                                         <p className="flex items-center gap-1.5 font-semibold tabular-nums">
-                                            <Unplug className="size-3.5 text-muted-foreground" />
-                                            {design.connections_count}
+                                            <Rows3 className="size-3.5 text-muted-foreground" />
+                                            {design.rails_count}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            Connections
+                                            DIN rows
                                         </p>
                                     </div>
                                     <p className="col-span-2 text-xs text-muted-foreground">
@@ -402,7 +381,7 @@ export default function LightingIndex() {
                         <DialogDescription>
                             {dialog === 'rename'
                                 ? 'Choose a name that makes this option easy to find.'
-                                : 'Set the physical size of your enclosure in millimeters.'}
+                                : 'Start with two empty DIN rows. Your panel grows as you add more rows.'}
                         </DialogDescription>
                     </DialogHeader>
                     <form
@@ -427,45 +406,16 @@ export default function LightingIndex() {
                             />
                         </div>
                         {dialog === 'new' && (
-                            <div className="grid grid-cols-3 gap-3">
-                                {(
-                                    [
-                                        'width_mm',
-                                        'height_mm',
-                                        'depth_mm',
-                                    ] as const
-                                ).map((field) => (
-                                    <div key={field} className="grid gap-1.5">
-                                        <Label htmlFor={`design-${field}`}>
-                                            {field === 'width_mm'
-                                                ? 'Width'
-                                                : field === 'height_mm'
-                                                  ? 'Height'
-                                                  : 'Depth'}{' '}
-                                            (mm)
-                                        </Label>
-                                        <Input
-                                            id={`design-${field}`}
-                                            type="number"
-                                            min="1"
-                                            max="10000"
-                                            step="0.01"
-                                            required={field !== 'depth_mm'}
-                                            value={form[field]}
-                                            placeholder={
-                                                field === 'depth_mm'
-                                                    ? 'Optional'
-                                                    : undefined
-                                            }
-                                            onChange={(event) =>
-                                                setForm({
-                                                    ...form,
-                                                    [field]: event.target.value,
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                ))}
+                            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4 text-sm">
+                                <Rows3 className="size-5 shrink-0 text-muted-foreground" />
+                                <div>
+                                    <p className="font-medium">
+                                        Two rows, ready for your devices
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        18-module rows · automatic panel height
+                                    </p>
+                                </div>
                             </div>
                         )}
                         {formError && (

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { test as unmonitoredTest } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import type {
@@ -9,6 +10,18 @@ import { expect, test } from '../fixtures/test';
 
 const lightingUrl =
     process.env.PLAYWRIGHT_LIGHTING_URL ?? 'http://lighting.localhost:8000';
+
+const productImageFixture = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="280" viewBox="0 0 180 280">
+    <rect x="22" y="8" width="136" height="264" rx="8" fill="#d7dce1" stroke="#919ba4" stroke-width="2"/>
+    <rect x="29" y="55" width="122" height="170" rx="5" fill="#f5f6f7"/>
+    <rect x="36" y="75" width="108" height="84" rx="3" fill="#263643"/>
+    <rect x="46" y="87" width="88" height="39" rx="3" fill="#40798c"/>
+    <circle cx="56" cy="143" r="4" fill="#74b69b"/>
+    <rect x="43" y="178" width="94" height="5" rx="2" fill="#a7b0b8"/>
+    <rect x="55" y="194" width="70" height="5" rx="2" fill="#b9c1c8"/>
+    <g fill="#495760"><rect x="38" y="16" width="24" height="31" rx="3"/><rect x="78" y="16" width="24" height="31" rx="3"/><rect x="118" y="16" width="24" height="31" rx="3"/><rect x="38" y="233" width="24" height="31" rx="3"/><rect x="78" y="233" width="24" height="31" rx="3"/><rect x="118" y="233" width="24" height="31" rx="3"/></g>
+    <g fill="#8b969f"><circle cx="50" cy="31" r="7"/><circle cx="90" cy="31" r="7"/><circle cx="130" cy="31" r="7"/><circle cx="50" cy="248" r="7"/><circle cx="90" cy="248" r="7"/><circle cx="130" cy="248" r="7"/></g>
+</svg>`;
 
 test.use({ viewport: { width: 1600, height: 1000 } });
 unmonitoredTest.use({ viewport: { width: 1600, height: 1000 } });
@@ -21,13 +34,10 @@ async function openLighting(
     await page.route('https://kb.shelly.cloud/**', (route) =>
         route.fulfill({
             status: 200,
-            contentType: 'image/png',
+            contentType: 'image/svg+xml',
             body: brokenImages
                 ? Buffer.from('not an image')
-                : Buffer.from(
-                      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1kAAAAASUVORK5CYII=',
-                      'base64',
-                  ),
+                : Buffer.from(productImageFixture),
         }),
     );
     const cookies = await context.cookies();
@@ -132,15 +142,87 @@ function componentNode(page: Page, id: string): Locator {
     return page.getByTestId(`lighting-component-${id}`);
 }
 
+function panelRow(page: Page, id: string): Locator {
+    return page.getByTestId(`lighting-row-${id}`);
+}
+
+function orderedRows(layout: LightingLayout) {
+    return [...layout.rails].sort(
+        (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+    );
+}
+
+function orderedRowItems(layout: LightingLayout, rowId: string) {
+    return layout.components
+        .filter((component) => component.rail_portable_id === rowId)
+        .sort(
+            (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+        );
+}
+
+function rowStructure(layout: LightingLayout) {
+    return orderedRows(layout).map((row) => ({
+        sort_order: row.sort_order,
+        items: orderedRowItems(layout, row.portable_id).map((component) => ({
+            component_definition_id: component.component_definition_id,
+            sort_order: component.sort_order,
+            custom_label: component.custom_label,
+            notes: component.notes,
+        })),
+    }));
+}
+
+async function expectRowItems(
+    page: Page,
+    designId: number,
+    rowId: string,
+    componentIds: string[],
+): Promise<void> {
+    await expect
+        .poll(async () =>
+            orderedRowItems(await readLayout(page, designId), rowId).map(
+                (component) => component.portable_id,
+            ),
+        )
+        .toEqual(componentIds);
+    await expect
+        .poll(() =>
+            panelRow(page, rowId)
+                .locator('[data-component-id]')
+                .evaluateAll((elements) =>
+                    elements.map((element) =>
+                        element.getAttribute('data-component-id'),
+                    ),
+                ),
+        )
+        .toEqual(componentIds);
+}
+
 async function placeComponent(
     page: Page,
     designId: number,
     name: string,
+    rowId?: string,
 ): Promise<string> {
     const previous = await readLayout(page, designId);
-    await page
-        .getByRole('button', { name: `Place ${name}`, exact: true })
+    await page.getByRole('button', { name: 'Add device', exact: true }).click();
+    const drawer = page.getByRole('dialog', {
+        name: 'Add device',
+        exact: true,
+    });
+    await drawer
+        .getByRole('combobox', { name: 'Add to row', exact: true })
+        .selectOption(rowId ?? orderedRows(previous)[0].portable_id);
+    await drawer.getByLabel('Search components', { exact: true }).fill(name);
+    await drawer
+        .getByRole('button', { name: `Add ${name}`, exact: true })
         .click();
+
+    if (await drawer.isVisible()) {
+        await page.keyboard.press('Escape');
+    }
+
+    await expect(drawer).toBeHidden();
     await expect
         .poll(async () => (await readLayout(page, designId)).components.length)
         .toBe(previous.components.length + 1);
@@ -153,90 +235,181 @@ async function placeComponent(
     );
     expect(component).toBeDefined();
     await expect(componentNode(page, component!.portable_id)).toBeVisible();
+    await componentNode(page, component!.portable_id).click();
 
     return component!.portable_id;
 }
 
-async function setPosition(page: Page, x: number, y: number): Promise<void> {
-    await inspector(page).getByLabel('X (mm)', { exact: true }).fill(String(x));
-    await inspector(page).getByLabel('X (mm)', { exact: true }).blur();
-    await inspector(page).getByLabel('Y (mm)', { exact: true }).fill(String(y));
-    await inspector(page).getByLabel('Y (mm)', { exact: true }).blur();
+async function moveComponent(
+    page: Page,
+    designId: number,
+    componentId: string,
+    rowId: string,
+): Promise<void> {
+    await componentNode(page, componentId).click();
+    await inspector(page)
+        .getByRole('combobox', { name: 'Move to row', exact: true })
+        .selectOption(rowId);
+    await expect
+        .poll(
+            async () =>
+                (await readLayout(page, designId)).components.find(
+                    (component) => component.portable_id === componentId,
+                )?.rail_portable_id,
+        )
+        .toBe(rowId);
+    await expect(componentNode(page, componentId)).toHaveAttribute(
+        'data-row-id',
+        rowId,
+    );
 }
 
-test('creates, places, reloads, and duplicates independent panel designs', async ({
+async function openRowOptions(page: Page, rowId: string): Promise<void> {
+    await panelRow(page, rowId)
+        .getByRole('button', { name: /Row \d+ options/ })
+        .click();
+}
+
+test('arranges devices on three rows, reloads, and duplicates an independent panel', async ({
     context,
     page,
 }, testInfo) => {
+    test.setTimeout(60_000);
     const name = `Lighting E2E ${randomUUID()}`;
     await openLighting(context, page);
 
     try {
         const designId = await createDesign(page, name);
-        const originalId = await placeComponent(
+        const initial = await readLayout(page, designId);
+        expect(initial.rails).toHaveLength(2);
+        expect(initial.components).toHaveLength(0);
+        const [firstRow, secondRow] = orderedRows(initial);
+        const relayId = await placeComponent(
             page,
             designId,
             'Shelly Pro 4PM (V2)',
+            firstRow.portable_id,
         );
-        await setPosition(page, 125, 150);
+        const dimmerId = await placeComponent(
+            page,
+            designId,
+            'Shelly Pro Dimmer 2PM',
+            firstRow.portable_id,
+        );
+        const supplyId = await placeComponent(
+            page,
+            designId,
+            'Generic 24V DIN power supply (sample)',
+            firstRow.portable_id,
+        );
+        await expectRowItems(page, designId, firstRow.portable_id, [
+            relayId,
+            dimmerId,
+            supplyId,
+        ]);
+
+        await page
+            .getByRole('button', { name: 'Add row', exact: true })
+            .click();
         await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).components[0].x_mm,
-            )
-            .toBe(125);
-        await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).components[0].y_mm,
-            )
-            .toBe(150);
+            .poll(async () => (await readLayout(page, designId)).rails.length)
+            .toBe(3);
+        const expanded = await readLayout(page, designId);
+        const newRow = expanded.rails.find(
+            (row) =>
+                !initial.rails.some(
+                    (original) => original.portable_id === row.portable_id,
+                ),
+        )!;
+        expect(expanded.design.height_mm).toBeGreaterThan(
+            initial.design.height_mm,
+        );
+
+        await moveComponent(page, designId, relayId, secondRow.portable_id);
+        const terminalId = await placeComponent(
+            page,
+            designId,
+            'Generic terminal block (sample)',
+            secondRow.portable_id,
+        );
+        await expectRowItems(page, designId, secondRow.portable_id, [
+            relayId,
+            terminalId,
+        ]);
+        await inspector(page)
+            .getByRole('button', { name: 'Move left', exact: true })
+            .click();
+        await expectRowItems(page, designId, secondRow.portable_id, [
+            terminalId,
+            relayId,
+        ]);
+        await componentNode(page, relayId).dragTo(
+            componentNode(page, terminalId),
+            { targetPosition: { x: 4, y: 80 } },
+        );
+        await expectRowItems(page, designId, secondRow.portable_id, [
+            relayId,
+            terminalId,
+        ]);
+        await moveComponent(page, designId, supplyId, newRow.portable_id);
+        await expectRowItems(page, designId, firstRow.portable_id, [dimmerId]);
+        await expectRowItems(page, designId, newRow.portable_id, [supplyId]);
+
+        const original = await readLayout(page, designId);
         await page.reload();
-        await expect(componentNode(page, originalId)).toHaveAttribute(
-            'data-x-mm',
-            '125',
+        await expectRowItems(page, designId, firstRow.portable_id, [dimmerId]);
+        await expectRowItems(page, designId, secondRow.portable_id, [
+            relayId,
+            terminalId,
+        ]);
+        await expectRowItems(page, designId, newRow.portable_id, [supplyId]);
+        expect(rowStructure(await readLayout(page, designId))).toEqual(
+            rowStructure(original),
         );
-        await expect(componentNode(page, originalId)).toHaveAttribute(
-            'data-y-mm',
-            '150',
-        );
+        await expect(page.locator('.react-flow')).toHaveCount(0);
         await page.screenshot({
-            path: testInfo.outputPath('persisted-panel-desktop.png'),
+            path: testInfo.outputPath('persisted-three-row-panel-desktop.png'),
         });
+
         await page
             .getByRole('button', { name: 'Back to designs', exact: true })
             .click();
-        await expect(
-            page.getByRole('heading', { name: 'Panel designs', exact: true }),
-        ).toBeVisible();
         await page
             .getByRole('button', { name: `Duplicate ${name}`, exact: true })
             .click();
+        const copyName = `${name} (copy)`;
         await expect(
-            page.getByRole('link', { name: `${name} (copy)`, exact: true }),
+            page.getByRole('link', { name: copyName, exact: true }),
         ).toBeVisible();
         const listing = await api<{ designs: { id: number; name: string }[] }>(
             page,
             '/api/designs',
         );
         const duplicate = listing.designs.find(
-            (design) => design.name === `${name} (copy)`,
-        );
-        expect(duplicate).toBeDefined();
-        const duplicated = await readLayout(page, duplicate!.id);
-        expect(duplicated.components).toHaveLength(1);
-        expect(duplicated.components[0].portable_id).not.toBe(originalId);
-        expect(duplicated.components[0].component_definition_id).toBe(
-            (await readLayout(page, designId)).components[0]
-                .component_definition_id,
-        );
-        await page
-            .getByRole('link', { name: `${name} (copy)`, exact: true })
-            .click();
-        await expect(
-            componentNode(page, duplicated.components[0].portable_id),
-        ).toBeVisible();
-        await componentNode(page, duplicated.components[0].portable_id).click();
+            (design) => design.name === copyName,
+        )!;
+        const duplicated = await readLayout(page, duplicate.id);
+        expect(rowStructure(duplicated)).toEqual(rowStructure(original));
+        expect(duplicated.components).toHaveLength(4);
+
+        for (const row of duplicated.rails) {
+            expect(
+                original.rails.map((item) => item.portable_id),
+            ).not.toContain(row.portable_id);
+        }
+
+        for (const component of duplicated.components) {
+            expect(
+                original.components.map((item) => item.portable_id),
+            ).not.toContain(component.portable_id);
+        }
+
+        await page.getByRole('link', { name: copyName, exact: true }).click();
+        const copiedItem = orderedRowItems(
+            duplicated,
+            orderedRows(duplicated)[0].portable_id,
+        )[0];
+        await componentNode(page, copiedItem.portable_id).click();
         await inspector(page)
             .getByLabel('Custom label')
             .fill('Independent duplicate');
@@ -244,19 +417,18 @@ test('creates, places, reloads, and duplicates independent panel designs', async
         await expect
             .poll(
                 async () =>
-                    (await readLayout(page, duplicate!.id)).components[0]
-                        .custom_label,
+                    (await readLayout(page, duplicate.id)).components.find(
+                        (item) => item.portable_id === copiedItem.portable_id,
+                    )?.custom_label,
             )
             .toBe('Independent duplicate');
-        expect(
-            (await readLayout(page, designId)).components[0].custom_label,
-        ).toBeNull();
+        expect(rowStructure(await readLayout(page, designId))).toEqual(
+            rowStructure(original),
+        );
+
         await page
             .getByRole('button', { name: 'Back to designs', exact: true })
             .click();
-        await expect(
-            page.getByRole('heading', { name: 'Panel designs', exact: true }),
-        ).toBeVisible();
         await page.setViewportSize({ width: 390, height: 844 });
         await expect(
             page.getByRole('link', { name, exact: true }),
@@ -269,164 +441,97 @@ test('creates, places, reloads, and duplicates independent panel designs', async
         await page.screenshot({
             path: testInfo.outputPath('design-list-mobile.png'),
         });
-        await page.getByRole('link', { name, exact: true }).click();
-        await expect(page.getByTestId('lighting-canvas')).toBeVisible();
-        await expect(
-            page.getByRole('button', { name: 'Components', exact: true }),
-        ).toBeVisible();
-        await expect(
-            page.getByRole('button', { name: 'Properties / BOM', exact: true }),
-        ).toBeVisible();
-        await expect(inspector(page)).toBeHidden();
-        await page.screenshot({
-            path: testInfo.outputPath('collapsed-editor-mobile.png'),
-        });
     } finally {
         await cleanupDesigns(page, name);
     }
 });
 
-test('routes terminal connections, moves a DIN rail with attached equipment, and restores geometry', async ({
+test('inserts and reorders rows and only removes empty rows', async ({
     context,
     page,
-}, testInfo) => {
-    const name = `Lighting E2E routes ${randomUUID()}`;
+}) => {
+    test.setTimeout(60_000);
+    const name = `Lighting E2E rows ${randomUUID()}`;
     await openLighting(context, page);
 
     try {
         const designId = await createDesign(page, name);
+        const originalRows = orderedRows(await readLayout(page, designId));
+        const firstId = originalRows[0].portable_id;
+        await openRowOptions(page, firstId);
         await page
-            .getByRole('button', { name: 'Add DIN rail', exact: true })
+            .getByRole('menuitem', { name: 'Add row above', exact: true })
             .click();
         await expect
             .poll(async () => (await readLayout(page, designId)).rails.length)
-            .toBe(1);
-        await setPosition(page, 20, 160);
+            .toBe(3);
+        const aboveId = orderedRows(await readLayout(page, designId))[0]
+            .portable_id;
+        expect(aboveId).not.toBe(firstId);
+
+        await openRowOptions(page, firstId);
+        await page
+            .getByRole('menuitem', { name: 'Add row below', exact: true })
+            .click();
         await expect
-            .poll(async () => (await readLayout(page, designId)).rails[0].y_mm)
-            .toBe(160);
-        const sourceId = await placeComponent(
-            page,
-            designId,
-            'Generic 24V DIN power supply (sample)',
-        );
-        await setPosition(page, 100, 130);
+            .poll(async () => (await readLayout(page, designId)).rails.length)
+            .toBe(4);
+        const inserted = orderedRows(await readLayout(page, designId));
+        const belowId = inserted[2].portable_id;
+        expect(inserted.map((row) => row.portable_id)).toEqual([
+            aboveId,
+            firstId,
+            belowId,
+            originalRows[1].portable_id,
+        ]);
+
+        await openRowOptions(page, firstId);
+        await page
+            .getByRole('menuitem', { name: 'Move row down', exact: true })
+            .click();
         await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).components.find(
-                        (item) => item.portable_id === sourceId,
-                    )?.rail_portable_id,
+            .poll(async () =>
+                orderedRows(await readLayout(page, designId)).map(
+                    (row) => row.portable_id,
+                ),
             )
-            .not.toBeNull();
-        const targetId = await placeComponent(
-            page,
-            designId,
-            'Generic ESP32 / I/O controller (sample)',
-        );
-        await setPosition(page, 250, 350);
-        await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).components.find(
-                        (item) => item.portable_id === targetId,
-                    )?.y_mm,
-            )
-            .toBe(350);
-        const source = componentNode(page, sourceId).locator(
-            '[data-terminal="24V+"]',
-        );
-        const target = componentNode(page, targetId).locator(
-            '[data-terminal="24V+"]',
-        );
-        await source.dragTo(target);
-        await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).connections.length,
-            )
-            .toBe(1);
+            .toEqual([aboveId, belowId, firstId, originalRows[1].portable_id]);
+
+        await placeComponent(page, designId, 'Shelly Pro Dimmer 2PM', firstId);
+        await openRowOptions(page, firstId);
         await expect(
-            page.getByRole('button', {
-                name: 'Move wire segment 2',
+            page.getByRole('menuitem', {
+                name: 'Remove empty row',
                 exact: true,
             }),
-        ).toBeVisible();
+        ).toBeDisabled();
+        await page.keyboard.press('Escape');
+        await openRowOptions(page, aboveId);
         await page
-            .getByRole('button', { name: 'Move wire segment 2', exact: true })
-            .dblclick();
-        await expect
-            .poll(
-                async () =>
-                    (await readLayout(page, designId)).connections[0]
-                        .route_points.length,
-            )
-            .toBeGreaterThan(4);
-        const bend = page.getByRole('button', {
-            name: 'Move bend 2',
-            exact: true,
-        });
-        const bendBounds = await bend.boundingBox();
-        expect(bendBounds).not.toBeNull();
-        await page.mouse.move(
-            bendBounds!.x + bendBounds!.width / 2,
-            bendBounds!.y + bendBounds!.height / 2,
-        );
-        await page.mouse.down();
-        await page.mouse.move(bendBounds!.x + 30, bendBounds!.y + 20, {
-            steps: 8,
-        });
-        await page.mouse.up();
-        await expect(page.getByRole('status')).toContainText('Saved');
-        const beforeMove = await readLayout(page, designId);
-        const attachedBefore = beforeMove.components.find(
-            (item) => item.portable_id === sourceId,
-        )!;
-        await page
-            .getByTestId(`lighting-rail-${beforeMove.rails[0].portable_id}`)
-            .click({ position: { x: 5, y: 5 } });
-        await inspector(page).getByLabel('Y (mm)', { exact: true }).fill('210');
-        await inspector(page).getByLabel('Y (mm)', { exact: true }).blur();
-        await expect
-            .poll(async () => (await readLayout(page, designId)).rails[0].y_mm)
-            .toBe(210);
-        const moved = await readLayout(page, designId);
-        expect(
-            moved.components.find((item) => item.portable_id === sourceId)!
-                .y_mm,
-        ).toBe(attachedBefore.y_mm + 50);
-        expect(moved.connections[0].route_points[0].y_mm).toBe(
-            beforeMove.connections[0].route_points[0].y_mm + 50,
-        );
-        expect(
-            moved.connections[0].route_points.every(
-                (point, index, points) =>
-                    index === 0 ||
-                    point.x_mm === points[index - 1].x_mm ||
-                    point.y_mm === points[index - 1].y_mm,
-            ),
-        ).toBe(true);
-        await page.reload();
-        await expect(componentNode(page, sourceId)).toHaveAttribute(
-            'data-y-mm',
-            String(attachedBefore.y_mm + 50),
-        );
-        expect(
-            (await readLayout(page, designId)).connections[0].route_points,
-        ).toEqual(moved.connections[0].route_points);
-        await page.screenshot({
-            path: testInfo.outputPath('routed-panel-desktop.png'),
-        });
-        await page
-            .getByRole('button', { name: 'Show wiring', exact: true })
+            .getByRole('menuitem', { name: 'Remove empty row', exact: true })
             .click();
-        await expect(page.locator('.react-flow__edge')).toHaveCount(0);
+        await expect
+            .poll(async () => (await readLayout(page, designId)).rails.length)
+            .toBe(3);
+        await expect(panelRow(page, aboveId)).toBeHidden();
+
+        await page.reload();
+        await expect
+            .poll(async () =>
+                orderedRows(await readLayout(page, designId)).map(
+                    (row) => row.portable_id,
+                ),
+            )
+            .toEqual([belowId, firstId, originalRows[1].portable_id]);
+        await expect(
+            panelRow(page, firstId).locator('[data-component-id]'),
+        ).toHaveCount(1);
     } finally {
         await cleanupDesigns(page, name);
     }
 });
 
-test('shows product placeholders when manufacturer images are unavailable at desktop sizes', async ({
+test('contains product images and keeps image fallbacks and labels readable at desktop sizes', async ({
     context,
     page,
 }, testInfo) => {
@@ -436,19 +541,24 @@ test('shows product placeholders when manufacturer images are unavailable at des
     try {
         const designId = await createDesign(page, name);
         const id = await placeComponent(page, designId, 'Shelly Pro 4PM (V2)');
+        const device = componentNode(page, id);
         await expect(
-            componentNode(page, id).getByRole('img', {
-                name: /Shelly.*SPSW-104PE16EU/,
-            }),
+            device.getByRole('img', { name: /Shelly.*SPSW-104PE16EU/ }),
         ).toBeVisible();
-        await expect(componentNode(page, id).locator('img')).toHaveCount(0);
+        await expect(device.locator('img')).toHaveCount(0);
+        await expect(device).toContainText('Shelly Pro 4PM (V2)');
+        await expect(device.locator('[data-terminal]')).toHaveCount(0);
+        const primaryLabel = device.getByText('Shelly Pro 4PM (V2)', {
+            exact: true,
+        });
+        expect(
+            await primaryLabel.evaluate((element) =>
+                Number.parseFloat(getComputedStyle(element).fontSize),
+            ),
+        ).toBeGreaterThanOrEqual(12);
 
         for (const width of [1440, 1920]) {
             await page.setViewportSize({ width, height: 1000 });
-            await expect(
-                page.getByRole('complementary', { name: 'Component palette' }),
-            ).toBeVisible();
-            await expect(inspector(page)).toBeVisible();
             await expect(page.getByTestId('lighting-canvas')).toBeVisible();
             expect(
                 await page.evaluate(
@@ -461,6 +571,39 @@ test('shows product placeholders when manufacturer images are unavailable at des
                 path: testInfo.outputPath(`image-fallback-${width}.png`),
             });
         }
+
+        const fallbackBounds = await device.boundingBox();
+        expect(fallbackBounds).not.toBeNull();
+
+        await page.unroute('https://kb.shelly.cloud/**');
+        await page.route('https://kb.shelly.cloud/**', (route) =>
+            route.fulfill({
+                status: 200,
+                contentType: 'image/svg+xml',
+                body: productImageFixture,
+            }),
+        );
+        await page.reload();
+        const image = componentNode(page, id).locator('img');
+        await expect(image).toBeVisible();
+        await expect
+            .poll(() =>
+                image.evaluate(
+                    (element: HTMLImageElement) => element.naturalWidth,
+                ),
+            )
+            .toBe(180);
+        expect(
+            await image.evaluate(
+                (element) => getComputedStyle(element).objectFit,
+            ),
+        ).toBe('contain');
+        const imageBounds = await componentNode(page, id).boundingBox();
+        expect(imageBounds?.width).toBe(fallbackBounds!.width);
+        expect(imageBounds?.height).toBe(fallbackBounds!.height);
+        await page.screenshot({
+            path: testInfo.outputPath('contained-device-image-desktop.png'),
+        });
     } finally {
         await cleanupDesigns(page, name);
     }
@@ -497,10 +640,7 @@ test('edits the catalog, uploads a product image, and preserves existing definit
         await dialog.getByLabel(/^Local product image/).setInputFiles({
             name: 'lighting-fixture.png',
             mimeType: 'image/png',
-            buffer: Buffer.from(
-                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1kAAAAASUVORK5CYII=',
-                'base64',
-            ),
+            buffer: await readFile('public/icons/homelab.png'),
         });
         await dialog
             .getByRole('button', { name: 'Add terminal', exact: true })
@@ -532,7 +672,10 @@ test('edits the catalog, uploads a product image, and preserves existing definit
             componentNode(page, placedId).locator('img'),
         ).toHaveAttribute('src', original.local_image_url!);
         await page
-            .getByRole('button', { name: 'Component catalog', exact: true })
+            .getByRole('button', { name: 'Panel menu', exact: true })
+            .click();
+        await page
+            .getByRole('menuitem', { name: 'Component catalog', exact: true })
             .click();
         await expect(
             page.getByRole('heading', {

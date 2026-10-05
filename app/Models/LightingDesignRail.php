@@ -18,11 +18,11 @@ class LightingDesignRail extends Model
     /** @use HasFactory<LightingDesignRailFactory> */
     use HasFactory;
 
-    protected $fillable = ['design_id', 'portable_id', 'component_definition_id', 'x_mm', 'y_mm', 'length_mm', 'width_mm'];
+    protected $fillable = ['design_id', 'portable_id', 'component_definition_id', 'sort_order', 'x_mm', 'y_mm', 'length_mm', 'width_mm'];
 
     protected function casts(): array
     {
-        return ['x_mm' => 'float', 'y_mm' => 'float', 'length_mm' => 'float', 'width_mm' => 'float'];
+        return ['sort_order' => 'integer', 'x_mm' => 'float', 'y_mm' => 'float', 'length_mm' => 'float', 'width_mm' => 'float'];
     }
 
     /** @return BelongsTo<LightingDesign, $this> */
