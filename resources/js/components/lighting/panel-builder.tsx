@@ -6,8 +6,8 @@ import {
     Rows3,
     Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
-import type { DragEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -17,9 +17,174 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { rowMmToPixels, rowPixelsToMm, snapDinPosition } from './din-placement';
 import { PanelDevice } from './panel-device';
-import type { LightingLayout } from './types';
+import {
+    panelDevicePosition,
+    panelRowItems,
+    panelRowSpace,
+} from './panel-layout';
+import type { ComponentDefinition, DesignRail, LightingLayout } from './types';
 import type { LightingEditorController } from './use-lighting-editor';
+
+type DragPreview = { id: string; rowId: string | null; xMm: number | null };
+type PointerDrag = {
+    id: string;
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    grabOffsetMm: number;
+    active: boolean;
+    preview: DragPreview;
+};
+
+function PhysicalRowTrack({
+    row,
+    layout,
+    editor,
+    definitions,
+    preview,
+    onTrack,
+    onPointerDown,
+}: {
+    row: DesignRail;
+    layout: LightingLayout;
+    editor: LightingEditorController;
+    definitions: Map<number, ComponentDefinition>;
+    preview: DragPreview | null;
+    onTrack: (rowId: string, element: HTMLDivElement | null) => void;
+    onPointerDown: (event: PointerEvent<HTMLButtonElement>, id: string) => void;
+}) {
+    const track = useRef<HTMLDivElement>(null);
+    const [width, setWidth] = useState(0);
+    const items = panelRowItems(layout, row.portable_id);
+    const scale = width / row.length_mm;
+    const previewComponent =
+        preview?.rowId === row.portable_id && preview.xMm !== null
+            ? layout.components.find((item) => item.portable_id === preview.id)
+            : undefined;
+    const previewDefinition = previewComponent
+        ? definitions.get(previewComponent.component_definition_id)
+        : undefined;
+
+    useEffect(() => {
+        const element = track.current;
+
+        if (!element) {
+            return;
+        }
+
+        const observer = new ResizeObserver(([entry]) =>
+            setWidth(entry.contentRect.width),
+        );
+        observer.observe(element);
+
+        return () => observer.disconnect();
+    }, []);
+
+    return (
+        <div className="min-w-0 p-2">
+            <div
+                ref={(element) => {
+                    track.current = element;
+                    onTrack(row.portable_id, element);
+                }}
+                className="relative h-[184px] w-full"
+                data-testid={`lighting-row-track-${row.portable_id}`}
+                data-rail-start-mm={row.x_mm}
+                data-rail-length-mm={row.length_mm}
+            >
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-10 h-7 rounded border-y border-[#7b8595]/50 bg-gradient-to-b from-[#596373] via-[#3d4654] to-[#657081] shadow-[0_2px_5px_#0008]"
+                />
+                {width > 0 &&
+                    items.map((component, index) => {
+                        const definition = definitions.get(
+                            component.component_definition_id,
+                        );
+
+                        return definition ? (
+                            <div
+                                key={component.portable_id}
+                                className="absolute top-0"
+                                style={{
+                                    left: rowMmToPixels(
+                                        component.x_mm,
+                                        row.x_mm,
+                                        scale,
+                                    ),
+                                }}
+                            >
+                                <PanelDevice
+                                    component={component}
+                                    definition={definition}
+                                    index={index}
+                                    width={definition.width_mm * scale}
+                                    selected={
+                                        editor.selection?.type ===
+                                            'component' &&
+                                        editor.selection.id ===
+                                            component.portable_id
+                                    }
+                                    dragging={
+                                        preview?.id === component.portable_id
+                                    }
+                                    onSelect={() =>
+                                        editor.setSelection({
+                                            type: 'component',
+                                            id: component.portable_id,
+                                        })
+                                    }
+                                    onPointerDown={onPointerDown}
+                                    onNudge={(direction) =>
+                                        editor.reorderComponent(
+                                            component.portable_id,
+                                            direction,
+                                        )
+                                    }
+                                />
+                            </div>
+                        ) : null;
+                    })}
+                {previewComponent &&
+                    previewDefinition &&
+                    preview?.xMm !== null && (
+                        <div
+                            className="pointer-events-none absolute top-0 z-10"
+                            data-testid="lighting-drag-preview"
+                            style={{
+                                left: rowMmToPixels(
+                                    preview!.xMm!,
+                                    row.x_mm,
+                                    scale,
+                                ),
+                            }}
+                        >
+                            <PanelDevice
+                                preview
+                                component={previewComponent}
+                                definition={previewDefinition}
+                                index={items.length}
+                                width={previewDefinition.width_mm * scale}
+                                selected={false}
+                                onSelect={() => undefined}
+                            />
+                            <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 rounded border border-blue-400/25 bg-[#202936] px-2 py-0.5 text-[11px] whitespace-nowrap text-blue-200">
+                                {Number((preview!.xMm! - row.x_mm).toFixed(2))}{' '}
+                                mm
+                            </span>
+                        </div>
+                    )}
+                {items.length === 0 && !previewComponent && (
+                    <p className="pointer-events-none absolute inset-x-0 top-24 text-center text-sm text-slate-500">
+                        Ready for your first device
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export function PanelBuilder({
     editor,
@@ -30,11 +195,10 @@ export function PanelBuilder({
     layout: LightingLayout;
     onAddDevice: (rowId?: string) => void;
 }) {
-    const [draggedId, setDraggedId] = useState<string | null>(null);
-    const [insertion, setInsertion] = useState<{
-        row: string;
-        index: number;
-    } | null>(null);
+    const [preview, setPreview] = useState<DragPreview | null>(null);
+    const tracks = useRef(new Map<string, HTMLDivElement>());
+    const pointerDrag = useRef<PointerDrag | null>(null);
+    const suppressClick = useRef(false);
     const rows = [...layout.rails].sort(
         (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
     );
@@ -47,35 +211,185 @@ export function PanelBuilder({
             !rows.some((row) => row.portable_id === component.rail_portable_id),
     );
 
-    function drop(event: DragEvent, row: string, index: number) {
-        event.preventDefault();
-        const id = event.dataTransfer.getData('application/lighting-device');
+    function cancelDrag() {
+        if (pointerDrag.current?.active) {
+            suppressClick.current = true;
+        }
 
-        if (id) {
-            const sourceItems = layout.components
-                .filter((component) => component.rail_portable_id === row)
-                .sort(
-                    (left, right) =>
-                        (left.sort_order ?? 0) - (right.sort_order ?? 0),
-                );
-            const sourceIndex = sourceItems.findIndex(
-                (component) => component.portable_id === id,
-            );
-            editor.moveComponent(
-                id,
-                row,
-                sourceIndex >= 0 && index > sourceIndex ? index - 1 : index,
+        pointerDrag.current = null;
+        setPreview(null);
+    }
+
+    useEffect(() => {
+        const cancel = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && pointerDrag.current) {
+                event.preventDefault();
+
+                if (pointerDrag.current.active) {
+                    suppressClick.current = true;
+                }
+
+                pointerDrag.current = null;
+                setPreview(null);
+            }
+        };
+        window.addEventListener('keydown', cancel);
+
+        return () => window.removeEventListener('keydown', cancel);
+    }, []);
+
+    function startDrag(event: PointerEvent<HTMLButtonElement>, id: string) {
+        if (event.button !== 0) {
+            return;
+        }
+
+        const component = layout.components.find(
+            (item) => item.portable_id === id,
+        );
+        const row = rows.find(
+            (item) => item.portable_id === component?.rail_portable_id,
+        );
+        const track = row ? tracks.current.get(row.portable_id) : null;
+
+        if (!component || !row || !track) {
+            return;
+        }
+
+        suppressClick.current = false;
+        const bounds = track.getBoundingClientRect();
+        pointerDrag.current = {
+            id,
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            grabOffsetMm:
+                rowPixelsToMm(
+                    event.clientX - bounds.left,
+                    row.x_mm,
+                    bounds.width / row.length_mm,
+                ) - component.x_mm,
+            active: false,
+            preview: { id, rowId: row.portable_id, xMm: component.x_mm },
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    function moveDrag(event: PointerEvent<HTMLDivElement>) {
+        const drag = pointerDrag.current;
+
+        if (!drag || event.pointerId !== drag.pointerId) {
+            return;
+        }
+
+        if (
+            !drag.active &&
+            Math.hypot(
+                event.clientX - drag.clientX,
+                event.clientY - drag.clientY,
+            ) < 4
+        ) {
+            return;
+        }
+
+        drag.active = true;
+        event.preventDefault();
+        const candidates = rows.flatMap((row) => {
+            const element = tracks.current.get(row.portable_id);
+
+            return element
+                ? [{ row, bounds: element.getBoundingClientRect() }]
+                : [];
+        });
+        const inside = candidates.some(
+            ({ bounds }) =>
+                event.clientY >= bounds.top - 24 &&
+                event.clientY <= bounds.bottom + 24,
+        );
+        const target = inside
+            ? candidates.sort(
+                  (left, right) =>
+                      Math.abs(
+                          event.clientY -
+                              (left.bounds.top + left.bounds.height / 2),
+                      ) -
+                      Math.abs(
+                          event.clientY -
+                              (right.bounds.top + right.bounds.height / 2),
+                      ),
+              )[0]
+            : undefined;
+        const component = layout.components.find(
+            (item) => item.portable_id === drag.id,
+        );
+        const definition = component
+            ? definitions.get(component.component_definition_id)
+            : undefined;
+        let xMm: number | null = null;
+
+        if (target && definition && target.bounds.width > 0) {
+            const desired =
+                rowPixelsToMm(
+                    event.clientX - target.bounds.left,
+                    target.row.x_mm,
+                    target.bounds.width / target.row.length_mm,
+                ) - drag.grabOffsetMm;
+            xMm = panelDevicePosition(
+                layout,
+                target.row.portable_id,
+                definition.width_mm,
+                snapDinPosition(desired, target.row.x_mm),
+                drag.id,
             );
         }
 
-        setDraggedId(null);
-        setInsertion(null);
+        drag.preview = {
+            id: drag.id,
+            rowId: target?.row.portable_id ?? null,
+            xMm,
+        };
+        setPreview(drag.preview);
+    }
+
+    function finishDrag(event: PointerEvent<HTMLDivElement>) {
+        const drag = pointerDrag.current;
+
+        if (!drag || drag.pointerId !== event.pointerId) {
+            return;
+        }
+
+        if (drag.active) {
+            suppressClick.current = true;
+
+            if (drag.preview.rowId && drag.preview.xMm !== null) {
+                editor.moveComponent(
+                    drag.id,
+                    drag.preview.rowId,
+                    drag.preview.xMm,
+                );
+            }
+        }
+
+        pointerDrag.current = null;
+        setPreview(null);
     }
 
     return (
         <div
             className="h-full overflow-auto bg-[radial-gradient(ellipse_at_top,#232730_0%,#171a20_65%)] px-5 py-5 xl:px-10"
             data-testid="lighting-canvas"
+            onPointerMove={moveDrag}
+            onPointerUp={finishDrag}
+            onPointerCancel={cancelDrag}
+            onPointerDownCapture={() => {
+                suppressClick.current = false;
+            }}
+            onClickCapture={(event) => {
+                if (suppressClick.current) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    suppressClick.current = false;
+                }
+            }}
         >
             <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
                 <div className="flex items-end justify-between gap-4 px-1">
@@ -124,32 +438,19 @@ export function PanelBuilder({
                         </div>
                         <div className="grid gap-3 p-3">
                             {rows.map((row, rowIndex) => {
-                                const items = layout.components
-                                    .filter(
-                                        (component) =>
-                                            component.rail_portable_id ===
-                                            row.portable_id,
-                                    )
-                                    .sort(
-                                        (left, right) =>
-                                            (left.sort_order ?? 0) -
-                                            (right.sort_order ?? 0),
-                                    );
-                                const usedWidth = items.reduce(
-                                    (width, item) =>
-                                        width +
-                                        (definitions.get(
-                                            item.component_definition_id,
-                                        )?.width_mm ?? 0),
-                                    0,
+                                const items = panelRowItems(
+                                    layout,
+                                    row.portable_id,
                                 );
-                                const remaining = Math.max(
-                                    0,
-                                    row.length_mm - usedWidth,
+                                const space = panelRowSpace(
+                                    layout,
+                                    row.portable_id,
                                 );
                                 const rowName = `Row ${String(rowIndex + 1).padStart(2, '0')}`;
                                 const active =
                                     editor.selectedRowId === row.portable_id;
+                                const destination =
+                                    preview?.rowId === row.portable_id;
 
                                 return (
                                     <section
@@ -158,11 +459,22 @@ export function PanelBuilder({
                                         data-testid={`lighting-row-${row.portable_id}`}
                                         data-row-id={row.portable_id}
                                         data-order={row.sort_order ?? rowIndex}
+                                        data-drop-state={
+                                            destination
+                                                ? preview.xMm === null
+                                                    ? 'full'
+                                                    : 'valid'
+                                                : undefined
+                                        }
                                         className={cn(
-                                            'min-w-0 rounded-xl border bg-[#15181d] shadow-[inset_0_2px_6px_#0003]',
-                                            active
-                                                ? 'border-blue-400/35'
-                                                : 'border-white/10',
+                                            'min-w-0 rounded-xl border bg-[#15181d] shadow-[inset_0_2px_6px_#0003] transition-colors',
+                                            destination
+                                                ? preview.xMm === null
+                                                    ? 'border-amber-400/50 bg-amber-400/[0.03]'
+                                                    : 'border-blue-400/70 bg-blue-500/[0.04]'
+                                                : active
+                                                  ? 'border-blue-400/35'
+                                                  : 'border-white/10',
                                         )}
                                     >
                                         <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-1">
@@ -188,9 +500,26 @@ export function PanelBuilder({
                                             </button>
                                             <div className="flex items-center gap-3">
                                                 <span className="text-xs text-slate-500">
-                                                    {Math.round(remaining)} mm
-                                                    available
+                                                    {space.total_free_mm} mm
+                                                    free{' '}
+                                                    <span className="hidden sm:inline">
+                                                        · {space.largest_gap_mm}{' '}
+                                                        mm largest gap
+                                                    </span>
                                                 </span>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="size-6 text-blue-300"
+                                                    aria-label={`Add device to ${rowName}`}
+                                                    onClick={() =>
+                                                        onAddDevice(
+                                                            row.portable_id,
+                                                        )
+                                                    }
+                                                >
+                                                    <Plus />
+                                                </Button>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger
                                                         asChild
@@ -265,6 +594,7 @@ export function PanelBuilder({
                                                             disabled={
                                                                 items.length > 0
                                                             }
+                                                            className="text-red-400 focus:text-red-300"
                                                             onClick={() =>
                                                                 editor.removeRow(
                                                                     row.portable_id,
@@ -278,171 +608,26 @@ export function PanelBuilder({
                                                 </DropdownMenu>
                                             </div>
                                         </div>
-                                        <div className="min-w-0 [scrollbar-width:thin] overflow-x-auto p-2">
-                                            <div className="relative flex min-h-[184px] w-max min-w-full items-center gap-3">
-                                                <div
-                                                    aria-hidden="true"
-                                                    className="pointer-events-none absolute inset-x-0 top-10 h-7 rounded border-y border-[#7b8595]/50 bg-gradient-to-b from-[#596373] via-[#3d4654] to-[#657081] shadow-[0_2px_5px_#0008]"
-                                                />
-                                                {items.map(
-                                                    (component, index) => {
-                                                        const definition =
-                                                            definitions.get(
-                                                                component.component_definition_id,
-                                                            );
-
-                                                        if (!definition) {
-                                                            return null;
-                                                        }
-
-                                                        return (
-                                                            <div
-                                                                key={
-                                                                    component.portable_id
-                                                                }
-                                                                className={cn(
-                                                                    'relative rounded-lg',
-                                                                    insertion?.row ===
-                                                                        row.portable_id &&
-                                                                        insertion.index ===
-                                                                            index &&
-                                                                        'before:absolute before:inset-y-0 before:-left-2 before:w-1 before:rounded before:bg-blue-400',
-                                                                )}
-                                                                onDragOver={(
-                                                                    event,
-                                                                ) => {
-                                                                    if (
-                                                                        !draggedId
-                                                                    ) {
-                                                                        return;
-                                                                    }
-
-                                                                    event.preventDefault();
-                                                                    const after =
-                                                                        event.clientX >
-                                                                        event.currentTarget.getBoundingClientRect()
-                                                                            .left +
-                                                                            event
-                                                                                .currentTarget
-                                                                                .offsetWidth /
-                                                                                2;
-                                                                    setInsertion(
-                                                                        {
-                                                                            row: row.portable_id,
-                                                                            index:
-                                                                                index +
-                                                                                Number(
-                                                                                    after,
-                                                                                ),
-                                                                        },
-                                                                    );
-                                                                }}
-                                                                onDrop={(
-                                                                    event,
-                                                                ) =>
-                                                                    drop(
-                                                                        event,
-                                                                        row.portable_id,
-                                                                        insertion?.row ===
-                                                                            row.portable_id
-                                                                            ? insertion.index
-                                                                            : index,
-                                                                    )
-                                                                }
-                                                            >
-                                                                <PanelDevice
-                                                                    component={
-                                                                        component
-                                                                    }
-                                                                    definition={
-                                                                        definition
-                                                                    }
-                                                                    index={
-                                                                        index
-                                                                    }
-                                                                    selected={
-                                                                        editor
-                                                                            .selection
-                                                                            ?.type ===
-                                                                            'component' &&
-                                                                        editor
-                                                                            .selection
-                                                                            .id ===
-                                                                            component.portable_id
-                                                                    }
-                                                                    onSelect={() =>
-                                                                        editor.setSelection(
-                                                                            {
-                                                                                type: 'component',
-                                                                                id: component.portable_id,
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                    onDragStart={
-                                                                        setDraggedId
-                                                                    }
-                                                                    onDragEnd={() => {
-                                                                        setDraggedId(
-                                                                            null,
-                                                                        );
-                                                                        setInsertion(
-                                                                            null,
-                                                                        );
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        );
-                                                    },
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    className={cn(
-                                                        'relative flex min-h-[184px] min-w-36 flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-blue-400/25 bg-[#3b82f6]/[0.04] px-5 text-blue-300 transition-colors hover:border-blue-400/60 hover:bg-blue-500/10 focus-visible:outline-2 focus-visible:outline-blue-400',
-                                                        insertion?.row ===
-                                                            row.portable_id &&
-                                                            insertion.index ===
-                                                                items.length &&
-                                                            'border-blue-400 bg-blue-500/15',
-                                                    )}
-                                                    aria-label={`Add device to ${rowName}`}
-                                                    onClick={() =>
-                                                        onAddDevice(
-                                                            row.portable_id,
-                                                        )
-                                                    }
-                                                    onDragOver={(event) => {
-                                                        if (draggedId) {
-                                                            event.preventDefault();
-                                                            setInsertion({
-                                                                row: row.portable_id,
-                                                                index: items.length,
-                                                            });
-                                                        }
-                                                    }}
-                                                    onDrop={(event) =>
-                                                        drop(
-                                                            event,
-                                                            row.portable_id,
-                                                            items.length,
-                                                        )
-                                                    }
-                                                >
-                                                    <span className="flex size-9 items-center justify-center rounded-full border border-blue-400/25 bg-blue-500/10">
-                                                        <Plus className="size-4" />
-                                                    </span>
-                                                    <span className="text-sm font-medium">
-                                                        Add device
-                                                    </span>
-                                                    {items.length === 0 && (
-                                                        <span className="max-w-64 text-center text-xs leading-5 text-slate-500">
-                                                            Start with a dimmer,
-                                                            relay, or power
-                                                            supply.
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
+                                        <PhysicalRowTrack
+                                            row={row}
+                                            layout={layout}
+                                            editor={editor}
+                                            definitions={definitions}
+                                            preview={preview}
+                                            onTrack={(rowId, element) => {
+                                                if (element) {
+                                                    tracks.current.set(
+                                                        rowId,
+                                                        element,
+                                                    );
+                                                } else {
+                                                    tracks.current.delete(
+                                                        rowId,
+                                                    );
+                                                }
+                                            }}
+                                            onPointerDown={startDrag}
+                                        />
                                     </section>
                                 );
                             })}
@@ -502,20 +687,19 @@ export function PanelBuilder({
                                                 id: component.portable_id,
                                             })
                                         }
-                                        onDragStart={setDraggedId}
-                                        onDragEnd={() => {
-                                            setDraggedId(null);
-                                            setInsertion(null);
-                                        }}
                                     />
                                 ) : null;
                             })}
                         </div>
                     </section>
                 )}
-                <p className="px-1 text-center text-xs text-slate-500">
-                    Select a device for details. Drag between rows or use the
-                    move controls.
+                <p
+                    className="px-1 text-center text-xs text-slate-500"
+                    aria-live="polite"
+                >
+                    {preview?.rowId && preview.xMm === null
+                        ? 'No gap on this row can fit this device.'
+                        : 'Select a device for details. Drag along the rail or between rows; use arrow keys for 1 mm moves.'}
                 </p>
             </div>
         </div>

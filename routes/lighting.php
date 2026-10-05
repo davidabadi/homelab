@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\LightingComponentDefinitionController;
 use App\Http\Controllers\LightingDesignController;
+use App\Http\Controllers\LightingDesignInterchangeController;
 use App\Http\Controllers\LightingLayoutController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,10 +14,13 @@ Route::middleware(['auth', 'verified'])->name('lighting.')->group(function (): v
     Route::prefix('api')->group(function (): void {
         Route::get('/designs', [LightingDesignController::class, 'index'])->name('designs.index');
         Route::post('/designs', [LightingDesignController::class, 'store'])->name('designs.store');
+        Route::post('/design-imports/preflight', [LightingDesignInterchangeController::class, 'preflight'])->name('imports.preflight');
+        Route::post('/design-imports', [LightingDesignInterchangeController::class, 'store'])->name('imports.store');
         Route::get('/designs/{design}', [LightingDesignController::class, 'show'])->whereNumber('design')->name('designs.show');
         Route::patch('/designs/{design}', [LightingDesignController::class, 'update'])->whereNumber('design')->name('designs.update');
         Route::delete('/designs/{design}', [LightingDesignController::class, 'destroy'])->whereNumber('design')->name('designs.destroy');
         Route::post('/designs/{design}/duplicate', [LightingDesignController::class, 'duplicate'])->whereNumber('design')->name('designs.duplicate');
+        Route::post('/designs/{design}/export', [LightingDesignInterchangeController::class, 'export'])->whereNumber('design')->name('designs.export');
         Route::put('/designs/{design}/layout', [LightingLayoutController::class, 'update'])->whereNumber('design')->name('designs.layout.update');
 
         Route::get('/component-definitions', [LightingComponentDefinitionController::class, 'index'])->name('definitions.index');

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\LightingComponentDefinition;
 use App\Models\LightingDesign;
+use App\Services\Lighting\LightingDinPlacement;
 use App\Services\Lighting\LightingGeometry;
 use App\Services\Lighting\LightingRowLayout;
 use Illuminate\Foundation\Http\FormRequest;
@@ -149,6 +150,11 @@ class SaveLightingLayoutRequest extends FormRequest
                     $rails = collect($this->array('rails'))->keyBy('portable_id');
                 }
                 StoreLightingDesignRequest::validateMargins($validator, $this->input('design'), 'design.');
+                foreach (LightingDinPlacement::validateRows($this->array('rails'), $this->array('components'), $definitions->all()) as $key => $messages) {
+                    foreach ($messages as $message) {
+                        $validator->errors()->add($key, $message);
+                    }
+                }
 
                 foreach (['components' => 'component', 'rails' => 'rail', 'ducts' => 'duct'] as $group => $kind) {
                     foreach ($this->input($group) as $index => $item) {

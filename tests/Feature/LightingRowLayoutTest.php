@@ -36,7 +36,7 @@ function lightingRowDevicePayload(LightingComponentDefinition $definition, ?stri
     return [
         'portable_id' => (string) Str::uuid(), 'component_definition_id' => $definition->id,
         'rail_portable_id' => $rowId, 'sort_order' => $order,
-        'x_mm' => 0, 'y_mm' => 0, 'rotation' => 0, 'custom_label' => null, 'notes' => null, 'metadata' => [],
+        'x_mm' => 20 + $order * $definition->width_mm, 'y_mm' => 0, 'rotation' => 0, 'custom_label' => null, 'notes' => null, 'metadata' => [],
     ];
 }
 
@@ -64,7 +64,7 @@ it('accepts explicit physical dimensions for existing API clients', function ():
         ->assertJsonPath('rails.0.length_mm', 560)->assertJsonPath('rails.0.x_mm', 15);
 });
 
-it('persists row and device order and derives upright physical positions', function (): void {
+it('persists horizontal positions and orders devices physically while deriving upright row alignment', function (): void {
     $user = User::factory()->create();
     $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
     $definition = LightingComponentDefinition::factory()->create();
@@ -77,7 +77,8 @@ it('persists row and device order and derives upright physical positions', funct
     $firstId = $payload['components'][0]['portable_id'];
     $secondId = $payload['components'][1]['portable_id'];
     $payload['components'][0]['rotation'] = 180;
-    $payload['components'][0]['x_mm'] = 999;
+    $payload['components'][0]['x_mm'] = 180.25;
+    $payload['components'][1]['x_mm'] = 40.5;
     $payload['components'][0]['y_mm'] = -50;
 
     $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)
@@ -87,9 +88,9 @@ it('persists row and device order and derives upright physical positions', funct
         ->assertJsonPath('rails.1.sort_order', 1)->assertJsonPath('design.height_mm', 320)->json();
     $items = collect($restored['components'])->keyBy('portable_id');
     expect($items[$secondId]['sort_order'])->toBe(0);
-    expect($items[$secondId]['x_mm'])->toBe(20);
+    expect($items[$secondId]['x_mm'])->toBe(40.5);
     expect($items[$firstId]['sort_order'])->toBe(1);
-    expect($items[$firstId]['x_mm'])->toBe(56);
+    expect($items[$firstId]['x_mm'])->toBe(180.25);
     expect($items[$firstId]['y_mm'])->toBe(185);
     expect($items[$firstId]['rotation'])->toBe(0);
 });
@@ -117,12 +118,12 @@ it('moves a device to another row without changing its identity or shared defini
     expect($placement->fresh()->id)->toBe($placement->id);
     expect($moved['rail_portable_id'])->toBe($payload['rails'][1]['portable_id']);
     expect($moved['sort_order'])->toBe(0);
-    expect($moved['x_mm'])->toBe(20);
+    expect($moved['x_mm'])->toBe(56);
     expect($moved['y_mm'])->toBe(185);
     expect($moved['component_definition_id'])->toBe($definition->id);
 });
 
-it('reorders existing devices and rows after reload rather than preserving database insertion order', function (): void {
+it('retains physical device order when sort order changes and moves rows after reload', function (): void {
     $user = User::factory()->create();
     $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
     $definition = LightingComponentDefinition::factory()->create();
@@ -143,7 +144,7 @@ it('reorders existing devices and rows after reload rather than preserving datab
     $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
     $this->getJson(route('lighting.designs.show', $design))->assertOk()
         ->assertJsonPath('rails.0.portable_id', $payload['rails'][1]['portable_id'])
-        ->assertJsonPath('components.0.portable_id', $payload['components'][1]['portable_id'])
+        ->assertJsonPath('components.0.portable_id', $payload['components'][0]['portable_id'])
         ->assertJsonPath('components.0.x_mm', 20)->assertJsonPath('components.1.x_mm', 56)
         ->assertJsonPath('components.0.y_mm', 185);
 });
@@ -337,8 +338,8 @@ it('keeps existing connections anchored when devices move between rows', functio
     $this->getJson(route('lighting.designs.show', $design))
         ->assertJsonPath('connections.0.portable_id', $payload['connections'][0]['portable_id'])
         ->assertJsonPath('connections.0.route_points', [
-            ['x_mm' => 29, 'y_mm' => 45], ['x_mm' => 38, 'y_mm' => 45],
-            ['x_mm' => 38, 'y_mm' => 185], ['x_mm' => 47, 'y_mm' => 185],
+            ['x_mm' => 29, 'y_mm' => 45], ['x_mm' => 56, 'y_mm' => 45],
+            ['x_mm' => 56, 'y_mm' => 185], ['x_mm' => 83, 'y_mm' => 185],
         ])->assertJsonPath('connections.0.actual_length_mm', 250);
 });
 
@@ -403,7 +404,7 @@ it('preserves existing cable bends while updating a moved device terminal', func
     $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
     $this->getJson(route('lighting.designs.show', $design))->assertJsonPath('connections.0.route_points', [
         ['x_mm' => 29, 'y_mm' => 45], ['x_mm' => 29, 'y_mm' => 20], ['x_mm' => 100, 'y_mm' => 20],
-        ['x_mm' => 100, 'y_mm' => 185], ['x_mm' => 47, 'y_mm' => 185],
+        ['x_mm' => 100, 'y_mm' => 185], ['x_mm' => 83, 'y_mm' => 185],
     ]);
 });
 
@@ -422,7 +423,7 @@ it('keeps a legacy design unchanged on read and converts its attached geometry o
     ];
 
     $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk()->assertJsonPath('save_version', 24);
-    $this->getJson(route('lighting.designs.show', $design))->assertJsonPath('components.0.x_mm', 0)
+    $this->getJson(route('lighting.designs.show', $design))->assertJsonPath('components.0.x_mm', 145)
         ->assertJsonPath('components.0.y_mm', 25)->assertJsonPath('components.0.portable_id', $component->portable_id)
         ->assertJsonPath('rails.0.portable_id', $rail->portable_id);
 });
@@ -468,4 +469,124 @@ it('backfills existing row and device order without rewriting physical geometry 
     expect($right->fresh()->x_mm)->toBe(100.0);
     expect($right->fresh()->y_mm)->toBe(-10.5);
     expect($right->fresh()->portable_id)->toBe($right->portable_id);
+});
+
+it('keeps a first device at the far right and preserves intentional gaps after subsequent saves', function (): void {
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
+    $definition = LightingComponentDefinition::factory()->create();
+    $payload = lightingRowLayoutPayload($design);
+    $payload['rails'] = [lightingRowPayload(0)];
+    $payload['components'] = [lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 0)];
+    $payload['components'][0]['x_mm'] = 308;
+    $rightId = $payload['components'][0]['portable_id'];
+    $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+    $payload['components'][] = lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 1);
+    $payload['components'][1]['x_mm'] = 20;
+    $payload['base_version'] = 1;
+    $payload['mutation_id'] = (string) Str::uuid();
+
+    $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+
+    $this->getJson(route('lighting.designs.show', $design))
+        ->assertJsonPath('components.0.x_mm', 20)->assertJsonPath('components.1.x_mm', 308)
+        ->assertJsonPath('components.1.portable_id', $rightId);
+    expect($design->components()->where('portable_id', $rightId)->firstOrFail()->x_mm)->toBe(308.0);
+});
+
+it('allows touching fractional device edges without requiring module increments', function (): void {
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
+    $definition = LightingComponentDefinition::factory()->create(['width_mm' => 5.2, 'mounting_anchor_x_mm' => 2.6]);
+    $payload = lightingRowLayoutPayload($design);
+    $payload['rails'] = [lightingRowPayload(0)];
+    $payload['components'] = [
+        lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 0),
+        lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 1),
+    ];
+
+    $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+
+    $this->getJson(route('lighting.designs.show', $design))
+        ->assertJsonPath('components.0.x_mm', 20)->assertJsonPath('components.1.x_mm', 25.2);
+});
+
+it('rejects invalid DIN intervals without changing a saved design for either layout client', function (bool $structured, int $index, float $xMm, string $message): void {
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
+    $definition = LightingComponentDefinition::factory()->create();
+    $payload = lightingRowLayoutPayload($design);
+    $payload['structured'] = $structured;
+    $payload['rails'] = [[...lightingRowPayload(0), 'x_mm' => 20, 'y_mm' => 72.5]];
+    $payload['components'] = [
+        [...lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 0), 'y_mm' => 45],
+        [...lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 1), 'y_mm' => 45],
+    ];
+    $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+    $payload['base_version'] = 1;
+    $payload['mutation_id'] = (string) Str::uuid();
+    $payload['components'][$index]['x_mm'] = $xMm;
+
+    $response = $this->putJson(route('lighting.designs.layout.update', $design), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors("components.{$index}.x_mm");
+    expect($response->json('errors')["components.{$index}.x_mm"][0])->toBe($message);
+
+    $this->getJson(route('lighting.designs.show', $design))
+        ->assertJsonPath('components.0.x_mm', 20)->assertJsonPath('components.1.x_mm', 56)
+        ->assertJsonPath('design.save_version', 1);
+})->with([
+    'structured left boundary' => [true, 0, 19.99, 'DIN devices must fit inside the usable rail.'],
+    'structured right boundary' => [true, 0, 308.01, 'DIN devices must fit inside the usable rail.'],
+    'structured overlap' => [true, 1, 55.99, 'DIN devices on the same row cannot overlap.'],
+    'unstructured left boundary' => [false, 0, 19.99, 'DIN devices must fit inside the usable rail.'],
+    'unstructured right boundary' => [false, 0, 308.01, 'DIN devices must fit inside the usable rail.'],
+    'unstructured overlap' => [false, 1, 55.99, 'DIN devices on the same row cannot overlap.'],
+]);
+
+it('updates cable terminal coordinates after horizontal movement while preserving route bends', function (): void {
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
+    $definition = LightingComponentDefinition::factory()->create();
+    $payload = lightingRowLayoutPayload($design);
+    $payload['rails'] = [lightingRowPayload(0)];
+    $payload['components'] = [
+        lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 0),
+        [...lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 1), 'x_mm' => 200],
+    ];
+    $payload['connections'] = [[
+        'portable_id' => (string) Str::uuid(), 'source_portable_id' => $payload['components'][0]['portable_id'],
+        'source_terminal' => 'L', 'target_portable_id' => $payload['components'][1]['portable_id'], 'target_terminal' => 'N',
+        'cable_type' => 'Power', 'color' => null, 'gauge' => null, 'conductor_count' => 1,
+        'route_points' => [['x_mm' => 29, 'y_mm' => 45], ['x_mm' => 29, 'y_mm' => 20], ['x_mm' => 227, 'y_mm' => 20], ['x_mm' => 227, 'y_mm' => 45]],
+        'actual_length_mm' => 400, 'notes' => 'Preserved conductor',
+    ]];
+    $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+    $payload['base_version'] = 1;
+    $payload['mutation_id'] = (string) Str::uuid();
+    $payload['components'][0]['x_mm'] = 308;
+
+    $this->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+
+    $this->getJson(route('lighting.designs.show', $design))->assertJsonPath('connections.0.route_points', [
+        ['x_mm' => 317, 'y_mm' => 45], ['x_mm' => 317, 'y_mm' => 20], ['x_mm' => 227, 'y_mm' => 20], ['x_mm' => 227, 'y_mm' => 45],
+    ])->assertJsonPath('connections.0.actual_length_mm', 400)->assertJsonPath('connections.0.notes', 'Preserved conductor');
+});
+
+it('rejects reducing usable rail width instead of silently repacking a rightmost device', function (): void {
+    $user = User::factory()->create();
+    $design = LightingDesign::factory()->for($user)->create(LightingRowLayout::DESIGN_DEFAULTS);
+    $definition = LightingComponentDefinition::factory()->create();
+    $payload = lightingRowLayoutPayload($design);
+    $payload['rails'] = [lightingRowPayload(0)];
+    $payload['components'] = [[...lightingRowDevicePayload($definition, $payload['rails'][0]['portable_id'], 0), 'x_mm' => 308]];
+    $this->actingAs($user)->putJson(route('lighting.designs.layout.update', $design), $payload)->assertOk();
+    $payload['base_version'] = 1;
+    $payload['mutation_id'] = (string) Str::uuid();
+    $payload['design']['width_mm'] = 360;
+
+    $this->putJson(route('lighting.designs.layout.update', $design), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors('components.0.x_mm');
+
+    $this->getJson(route('lighting.designs.show', $design))->assertJsonPath('components.0.x_mm', 308)
+        ->assertJsonPath('design.width_mm', 364)->assertJsonPath('design.save_version', 1);
 });

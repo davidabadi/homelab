@@ -418,20 +418,36 @@ export function rerouteConnections(layout: LightingLayout): LightingLayout {
                 return connection;
             }
 
+            const sourcePoint = terminalPoint(
+                source,
+                sourceDefinition,
+                connection.source_terminal,
+            );
+            const targetPoint = terminalPoint(
+                target,
+                targetDefinition,
+                connection.target_terminal,
+            );
+            const firstPoint = connection.route_points[0];
+            const lastPoint = connection.route_points.at(-1);
+            const samePoint = (left: MmPoint | undefined, right: MmPoint) =>
+                left !== undefined &&
+                Math.round(left.x_mm * 100) === Math.round(right.x_mm * 100) &&
+                Math.round(left.y_mm * 100) === Math.round(right.y_mm * 100);
+
+            if (
+                samePoint(firstPoint, sourcePoint) &&
+                samePoint(lastPoint, targetPoint)
+            ) {
+                return connection;
+            }
+
             return {
                 ...connection,
                 route_points: updateRouteEndpoints(
                     connection.route_points,
-                    terminalPoint(
-                        source,
-                        sourceDefinition,
-                        connection.source_terminal,
-                    ),
-                    terminalPoint(
-                        target,
-                        targetDefinition,
-                        connection.target_terminal,
-                    ),
+                    sourcePoint,
+                    targetPoint,
                 ),
             };
         }),

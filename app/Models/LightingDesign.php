@@ -27,7 +27,7 @@ class LightingDesign extends Model
 
     public const EDITABLE_FIELDS = [
         'name', 'width_mm', 'height_mm', 'depth_mm', 'margin_top_mm', 'margin_right_mm',
-        'margin_bottom_mm', 'margin_left_mm', 'grid_size_mm', 'snap_to_grid', 'notes',
+        'margin_bottom_mm', 'margin_left_mm', 'grid_size_mm', 'snap_to_grid', 'notes', 'metadata',
     ];
 
     protected $fillable = [
@@ -40,7 +40,7 @@ class LightingDesign extends Model
             'width_mm' => 'float', 'height_mm' => 'float', 'depth_mm' => 'float',
             'margin_top_mm' => 'float', 'margin_right_mm' => 'float',
             'margin_bottom_mm' => 'float', 'margin_left_mm' => 'float',
-            'grid_size_mm' => 'float', 'snap_to_grid' => 'boolean', 'save_version' => 'integer',
+            'grid_size_mm' => 'float', 'snap_to_grid' => 'boolean', 'save_version' => 'integer', 'metadata' => 'array',
         ];
     }
 

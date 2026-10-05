@@ -7,6 +7,8 @@ import {
     normalizePanelLayout,
     panelRowItems,
     panelRowWidth,
+    panelRowSpace,
+    panelDevicePosition,
     placePanelDevice,
     removePanelRow,
     reorderPanelDevice,
@@ -74,7 +76,7 @@ function item(
         component_definition_id,
         rail_portable_id: rowId,
         sort_order,
-        x_mm: 99,
+        x_mm: 20 + sort_order * 90,
         y_mm: 400,
         rotation: 90,
         custom_label: `Label ${id}`,
@@ -120,10 +122,13 @@ function itemIds(panel, rowId) {
     );
 }
 
-test('normalization uses persisted order and physical widths to align devices on automatic rows', () => {
+test('normalization orders devices by physical position and preserves intentional gaps on automatic rows', () => {
     const original = layout({
         rails: [row('row-2', 5), row('row-1', 2)],
-        components: [item('wide', 'row-1', 9, 2), item('narrow', 'row-1', 4)],
+        components: [
+            { ...item('wide', 'row-1', 9, 2), x_mm: 180 },
+            { ...item('narrow', 'row-1', 4), x_mm: 40 },
+        ],
     });
     const before = structuredClone(original);
 
@@ -170,14 +175,14 @@ test('normalization uses persisted order and physical widths to align devices on
         [
             {
                 portable_id: 'narrow',
-                x_mm: 20,
+                x_mm: 40,
                 y_mm: 45,
                 rotation: 0,
                 sort_order: 0,
             },
             {
                 portable_id: 'wide',
-                x_mm: 56,
+                x_mm: 180,
                 y_mm: 45,
                 rotation: 0,
                 sort_order: 1,
@@ -265,14 +270,14 @@ test('an occupied row cannot be removed and leaves its items and geometry intact
     assert.equal(removed.design.height_mm, 180);
 });
 
-test('placing a shared catalog device at an insertion point retains labels and assigns a new item id', () => {
+test('placing a shared catalog device uses the first fitting gap without moving neighbors', () => {
     const original = normalizePanelLayout(
         layout({ components: [item('first'), item('last', 'row-1', 1)] }),
     );
     const before = structuredClone(original);
     const catalogDevice = definition(3, { width_mm: 19 });
 
-    const placed = placePanelDevice(original, catalogDevice, 'row-1', 1);
+    const placed = placePanelDevice(original, catalogDevice, 'row-1');
 
     assert.deepEqual(placed.selection, {
         type: 'component',
@@ -287,7 +292,7 @@ test('placing a shared catalog device at an insertion point retains labels and a
         panelRowItems(placed.layout, 'row-1').map(
             (component) => component.x_mm,
         ),
-        [20, 56, 75],
+        [20, 56, 110],
     );
     assert.equal(placed.layout.definitions.at(-1).id, 3);
     assert.equal(placed.layout.components.at(-1).component_definition_id, 3);
@@ -295,7 +300,7 @@ test('placing a shared catalog device at an insertion point retains labels and a
     assert.deepEqual(original, before);
 });
 
-test('reordering devices changes their sequence and physical positions without changing identity', () => {
+test('move controls nudge a device physically without packing its neighbors or changing identity', () => {
     const original = normalizePanelLayout(
         layout({
             components: [
@@ -310,10 +315,10 @@ test('reordering devices changes their sequence and physical positions without c
     const movedLeft = reorderPanelDevice(original, 'second', -1);
     const movedRight = reorderPanelDevice(movedLeft, 'second', 1);
 
-    assert.deepEqual(itemIds(movedLeft, 'row-1'), ['second', 'first', 'third']);
+    assert.deepEqual(itemIds(movedLeft, 'row-1'), ['first', 'second', 'third']);
     assert.deepEqual(
         panelRowItems(movedLeft, 'row-1').map((component) => component.x_mm),
-        [20, 92, 128],
+        [20, 109, 200],
     );
     assert.deepEqual(
         panelRowItems(movedLeft, 'row-1').map(
@@ -326,11 +331,11 @@ test('reordering devices changes their sequence and physical positions without c
         'second',
         'third',
     ]);
-    assert.equal(reorderPanelDevice(movedLeft, 'second', -1), movedLeft);
+    assert.equal(reorderPanelDevice(movedLeft, 'first', -1), movedLeft);
     assert.deepEqual(original, before);
 });
 
-test('moving a device between rows compacts the source and inserts into the destination', () => {
+test('moving a device between rows preserves its horizontal position and source gaps', () => {
     const original = normalizePanelLayout(
         layout({
             components: [
@@ -343,17 +348,17 @@ test('moving a device between rows compacts the source and inserts into the dest
     );
     const before = structuredClone(original);
 
-    const moved = movePanelDevice(original, 'moving', 'row-2', 0);
+    const moved = movePanelDevice(original, 'moving', 'row-2');
 
     assert.deepEqual(itemIds(moved, 'row-1'), ['first', 'last']);
-    assert.deepEqual(itemIds(moved, 'row-2'), ['moving', 'target']);
+    assert.deepEqual(itemIds(moved, 'row-2'), ['target', 'moving']);
     assert.deepEqual(
         panelRowItems(moved, 'row-1').map((component) => component.x_mm),
-        [20, 56],
+        [20, 200],
     );
     assert.deepEqual(
         panelRowItems(moved, 'row-2').map((component) => component.x_mm),
-        [20, 92],
+        [20, 110],
     );
     assert.deepEqual(
         panelRowItems(moved, 'row-2').map((component) => component.sort_order),
@@ -505,4 +510,125 @@ test('moving a wired device keeps connections and conductor data while updating 
         ),
     );
     assert.deepEqual(original, before);
+});
+
+test('a far-right first device leaves the left side available and gaps survive repeated normalization', () => {
+    const original = normalizePanelLayout(
+        layout({ components: [{ ...item('right'), x_mm: 308 }] }),
+    );
+
+    const placed = placePanelDevice(original, definition(), 'row-1');
+    const reloaded = normalizePanelLayout(structuredClone(placed.layout));
+
+    assert.deepEqual(
+        panelRowItems(reloaded, 'row-1').map((component) => component.x_mm),
+        [20, 308],
+    );
+    assert.deepEqual(panelRowSpace(reloaded, 'row-1'), {
+        gaps: [{ start_mm: 56, end_mm: 308 }],
+        total_free_mm: 252,
+        largest_gap_mm: 252,
+    });
+    assert.equal(original.components[0].x_mm, 308);
+});
+
+test('moving rows selects the nearest valid gap when the original position is occupied', () => {
+    const original = normalizePanelLayout(
+        layout({
+            components: [
+                { ...item('moving', 'row-1', 0, 2), x_mm: 110 },
+                { ...item('obstacle', 'row-2'), x_mm: 110 },
+            ],
+        }),
+    );
+
+    const moved = movePanelDevice(original, 'moving', 'row-2');
+
+    assert.equal(moved.components[0].x_mm, 146);
+    assert.equal(moved.components[1].x_mm, 110);
+    assert.equal(panelDevicePosition(original, 'row-2', 72, 110), 146);
+});
+
+test('normalization rejects collisions and panel resizing that would invalidate persistent X', () => {
+    const original = layout({
+        components: [
+            item('first'),
+            { ...item('overlapping', 'row-1', 1), x_mm: 55.99 },
+        ],
+    });
+
+    assert.throws(() => normalizePanelLayout(original), /cannot overlap/);
+    assert.throws(
+        () =>
+            normalizePanelLayout(
+                layout({ components: [{ ...item('outside'), x_mm: 309 }] }),
+            ),
+        /inside the usable rail/,
+    );
+    assert.equal(original.components[1].x_mm, 55.99);
+});
+
+test('normalization retains intentional route points verbatim when terminal endpoints already match', () => {
+    const connection = {
+        portable_id: 'wire',
+        source_portable_id: 'source',
+        source_terminal: 'P',
+        target_portable_id: 'target',
+        target_terminal: 'P',
+        cable_type: 'Power',
+        color: null,
+        gauge: null,
+        conductor_count: 1,
+        actual_length_mm: null,
+        notes: null,
+        route_points: [
+            { x_mm: 20, y_mm: 45 },
+            { x_mm: 40, y_mm: 45 },
+            { x_mm: 60, y_mm: 45 },
+            { x_mm: 110, y_mm: 45 },
+        ],
+    };
+    const original = layout({
+        components: [item('source'), item('target', 'row-1', 1)],
+        connections: [connection],
+    });
+
+    const normalized = normalizePanelLayout(original);
+
+    assert.deepEqual(
+        normalized.connections[0].route_points,
+        connection.route_points,
+    );
+});
+
+test('move controls stop at touching edges instead of jumping across a neighboring device', () => {
+    const original = normalizePanelLayout(
+        layout({
+            components: [
+                item('left'),
+                { ...item('right', 'row-1', 1), x_mm: 56 },
+            ],
+        }),
+    );
+
+    assert.equal(reorderPanelDevice(original, 'left', 1), original);
+    assert.equal(reorderPanelDevice(original, 'right', -1), original);
+    assert.equal(
+        reorderPanelDevice(original, 'right', 1).components[1].x_mm,
+        57,
+    );
+});
+
+test('one millimeter nudges retain fractional positions from physical device widths', () => {
+    const original = normalizePanelLayout(
+        layout({ components: [{ ...item('fractional'), x_mm: 25.2 }] }),
+    );
+    const moved = reorderPanelDevice(original, 'fractional', 1);
+
+    assert.equal(moved.components[0].x_mm, 26.2);
+    assert.equal(
+        reorderPanelDevice(moved, 'fractional', -1).components[0].x_mm,
+        25.2,
+    );
+    assert.equal(original.components[0].x_mm, 25.2);
 });

@@ -1,3 +1,10 @@
+import {
+    dinPositionFits,
+    firstDinPosition,
+    freeDinGaps,
+    nearestDinPosition,
+    nudgeDinPosition,
+} from './din-placement.ts';
 import { rerouteConnections } from './geometry.ts';
 import type {
     ComponentDefinition,
@@ -23,9 +30,80 @@ export function panelRowItems(
     layout: LightingLayout,
     rowId: string,
 ): PlacedComponent[] {
-    return ordered(
-        layout.components.filter((item) => item.rail_portable_id === rowId),
+    return layout.components
+        .filter((item) => item.rail_portable_id === rowId)
+        .sort(
+            (left, right) =>
+                left.x_mm - right.x_mm ||
+                (left.sort_order ?? 0) - (right.sort_order ?? 0) ||
+                left.portable_id.localeCompare(right.portable_id),
+        );
+}
+
+function panelRowOccupied(
+    layout: LightingLayout,
+    rowId: string,
+    excludeComponentId?: string,
+) {
+    const definitions = new Map(
+        layout.definitions.map((definition) => [definition.id, definition]),
     );
+
+    return panelRowItems(layout, rowId)
+        .filter((item) => item.portable_id !== excludeComponentId)
+        .map((item) => ({
+            x_mm: item.x_mm,
+            width_mm:
+                definitions.get(item.component_definition_id)?.width_mm ?? 0,
+        }));
+}
+
+export function panelRowSpace(
+    layout: LightingLayout,
+    rowId: string,
+    excludeComponentId?: string,
+) {
+    const rail = layout.rails.find((row) => row.portable_id === rowId);
+    const gaps = rail
+        ? freeDinGaps(rail, panelRowOccupied(layout, rowId, excludeComponentId))
+        : [];
+
+    return {
+        gaps,
+        total_free_mm:
+            Math.round(
+                gaps.reduce(
+                    (total, gap) => total + gap.end_mm - gap.start_mm,
+                    0,
+                ) * 100,
+            ) / 100,
+        largest_gap_mm: Math.max(
+            0,
+            ...gaps.map(
+                (gap) => Math.round((gap.end_mm - gap.start_mm) * 100) / 100,
+            ),
+        ),
+    };
+}
+
+export function panelDevicePosition(
+    layout: LightingLayout,
+    rowId: string,
+    widthMm: number,
+    preferredXmm?: number,
+    excludeComponentId?: string,
+): number | null {
+    const rail = layout.rails.find((row) => row.portable_id === rowId);
+
+    if (!rail) {
+        return null;
+    }
+
+    const occupied = panelRowOccupied(layout, rowId, excludeComponentId);
+
+    return preferredXmm === undefined
+        ? firstDinPosition(rail, widthMm, occupied)
+        : nearestDinPosition(rail, widthMm, preferredXmm, occupied);
 }
 
 export function panelRowWidth(layout: LightingLayout, rowId: string): number {
@@ -88,16 +166,52 @@ export function normalizePanelLayout(layout: LightingLayout): LightingLayout {
     const rails = rows.map((row, rowIndex): DesignRail => {
         const centerY =
             layout.design.margin_top_mm + rowIndex * pitch + centerOffset;
-        let offsetX = layout.design.margin_left_mm;
         const items = panelRowItems(layout, row.portable_id);
+        const normalizedRail = {
+            ...row,
+            sort_order: rowIndex,
+            x_mm: layout.design.margin_left_mm,
+            y_mm: Math.round((centerY - 17.5) * 100) / 100,
+            length_mm: Math.round(usableWidth * 100) / 100,
+            width_mm: 35,
+        };
+        const occupied: { x_mm: number; width_mm: number }[] = [];
 
         items.forEach((item, index) => {
             const definition = definitions.get(item.component_definition_id)!;
+
+            if (
+                !dinPositionFits(
+                    normalizedRail,
+                    definition.width_mm,
+                    item.x_mm,
+                    [],
+                )
+            ) {
+                throw new Error(
+                    `Row ${String(rowIndex + 1).padStart(2, '0')}: keep devices inside the usable rail. Move the device or increase the panel width.`,
+                );
+            }
+
+            if (
+                !dinPositionFits(
+                    normalizedRail,
+                    definition.width_mm,
+                    item.x_mm,
+                    occupied,
+                )
+            ) {
+                throw new Error(
+                    `Row ${String(rowIndex + 1).padStart(2, '0')}: devices cannot overlap. Move the device into a free gap.`,
+                );
+            }
+
+            occupied.push({ x_mm: item.x_mm, width_mm: definition.width_mm });
             components.set(item.portable_id, {
                 ...item,
                 sort_order: index,
                 rotation: 0,
-                x_mm: Math.round(offsetX * 100) / 100,
+                x_mm: Math.round(item.x_mm * 100) / 100,
                 y_mm:
                     Math.round(
                         (centerY -
@@ -106,23 +220,9 @@ export function normalizePanelLayout(layout: LightingLayout): LightingLayout {
                             100,
                     ) / 100,
             });
-            offsetX += definition.width_mm;
         });
 
-        if (offsetX - layout.design.margin_left_mm > usableWidth + 0.01) {
-            throw new Error(
-                `Row ${String(rowIndex + 1).padStart(2, '0')} is full. Add another row or move a device to make room.`,
-            );
-        }
-
-        return {
-            ...row,
-            sort_order: rowIndex,
-            x_mm: layout.design.margin_left_mm,
-            y_mm: Math.round((centerY - 17.5) * 100) / 100,
-            length_mm: Math.round(usableWidth * 100) / 100,
-            width_mm: 35,
-        };
+        return normalizedRail;
     });
     ordered(layout.components.filter((item) => !item.rail_portable_id)).forEach(
         (item, index) => {
@@ -218,7 +318,7 @@ export function placePanelDevice(
     layout: LightingLayout,
     definition: ComponentDefinition,
     rowId: string,
-    index?: number,
+    xMm?: number,
 ): { layout: LightingLayout; selection: LightingSelection } {
     if (
         definition.kind !== 'component' ||
@@ -231,12 +331,29 @@ export function placePanelDevice(
         throw new Error('Add a row before placing a device.');
     }
 
+    const position = panelDevicePosition(
+        layout,
+        rowId,
+        definition.width_mm,
+        xMm,
+    );
+
+    if (position === null) {
+        const rowIndex = ordered(layout.rails).findIndex(
+            (row) => row.portable_id === rowId,
+        );
+
+        throw new Error(
+            `Row ${String(rowIndex + 1).padStart(2, '0')} is full. Add another row or move a device to make room.`,
+        );
+    }
+
     const portable_id = crypto.randomUUID();
     const component: PlacedComponent = {
         portable_id,
         component_definition_id: definition.id,
         rail_portable_id: rowId,
-        x_mm: 0,
+        x_mm: position,
         y_mm: 0,
         rotation: 0,
         custom_label: null,
@@ -254,7 +371,7 @@ export function placePanelDevice(
     };
 
     return {
-        layout: movePanelDevice(next, portable_id, rowId, index),
+        layout: normalizePanelLayout(next),
         selection: { type: 'component', id: portable_id },
     };
 }
@@ -263,7 +380,7 @@ export function movePanelDevice(
     layout: LightingLayout,
     componentId: string,
     rowId: string,
-    index?: number,
+    xMm?: number,
 ): LightingLayout {
     if (!layout.rails.some((row) => row.portable_id === rowId)) {
         throw new Error('Choose a row in this design.');
@@ -280,37 +397,32 @@ export function movePanelDevice(
         throw new Error('Only DIN-mounted devices can be moved to a row.');
     }
 
-    const destination = panelRowItems(layout, rowId).filter(
-        (item) => item.portable_id !== componentId,
+    const position = panelDevicePosition(
+        layout,
+        rowId,
+        definition.width_mm,
+        xMm ?? component.x_mm,
+        componentId,
     );
-    destination.splice(
-        Math.max(0, Math.min(index ?? destination.length, destination.length)),
-        0,
-        { ...component, rail_portable_id: rowId },
-    );
-    const updated = new Map(
-        destination.map((item, sort_order) => [
-            item.portable_id,
-            { ...item, sort_order },
-        ]),
-    );
-    const next = {
-        ...layout,
-        components: layout.components.map(
-            (item) => updated.get(item.portable_id) ?? item,
-        ),
-    };
 
-    if (component.rail_portable_id && component.rail_portable_id !== rowId) {
-        panelRowItems(next, component.rail_portable_id).forEach(
-            (item, sort_order) => {
-                updated.set(item.portable_id, { ...item, sort_order });
-            },
+    if (position === null) {
+        const rowIndex = ordered(layout.rails).findIndex(
+            (row) => row.portable_id === rowId,
         );
-        next.components = next.components.map(
-            (item) => updated.get(item.portable_id) ?? item,
+
+        throw new Error(
+            `Row ${String(rowIndex + 1).padStart(2, '0')} is full. Add another row or move a device to make room.`,
         );
     }
+
+    const next = {
+        ...layout,
+        components: layout.components.map((item) =>
+            item.portable_id === componentId
+                ? { ...item, rail_portable_id: rowId, x_mm: position }
+                : item,
+        ),
+    };
 
     return normalizePanelLayout(next);
 }
@@ -328,11 +440,27 @@ export function reorderPanelDevice(
         return layout;
     }
 
-    const items = panelRowItems(layout, component.rail_portable_id);
-    const index = items.findIndex((item) => item.portable_id === componentId);
-    const destination = index + direction;
+    const rail = layout.rails.find(
+        (row) => row.portable_id === component.rail_portable_id,
+    );
+    const definition = layout.definitions.find(
+        (item) => item.id === component.component_definition_id,
+    );
 
-    if (destination < 0 || destination >= items.length) {
+    if (!rail || !definition) {
+        return layout;
+    }
+
+    const position = nudgeDinPosition(component.x_mm, direction);
+
+    if (
+        !dinPositionFits(
+            rail,
+            definition.width_mm,
+            position,
+            panelRowOccupied(layout, rail.portable_id, componentId),
+        )
+    ) {
         return layout;
     }
 
@@ -340,6 +468,6 @@ export function reorderPanelDevice(
         layout,
         componentId,
         component.rail_portable_id,
-        destination,
+        position,
     );
 }

@@ -22,10 +22,10 @@ function csrfToken(): string {
     return token ? decodeURIComponent(token) : '';
 }
 
-export async function lightingRequest<T>(
+async function lightingResponse(
     url: string,
     options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
     const response = await fetch(url, {
         credentials: 'same-origin',
         ...options,
@@ -52,9 +52,39 @@ export async function lightingRequest<T>(
         );
     }
 
+    return response;
+}
+
+export async function lightingRequest<T>(
+    url: string,
+    options: RequestInit = {},
+): Promise<T> {
+    const response = await lightingResponse(url, options);
+
     return response.status === 204
         ? (undefined as T)
         : ((await response.json()) as T);
+}
+
+export async function downloadLightingJson(
+    url: string,
+    layout: unknown,
+): Promise<void> {
+    const response = await lightingResponse(url, {
+        method: 'POST',
+        body: JSON.stringify({ layout }),
+    });
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename =
+        disposition.match(/filename="([^"]+)"/)?.[1] ??
+        disposition.match(/filename=([^;\s]+)/)?.[1] ??
+        'lighting-design.lighting.json';
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 export function lightingErrorMessage(error: unknown): string {

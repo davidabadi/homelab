@@ -8,6 +8,7 @@ import {
     Plus,
     Rows3,
     Trash2,
+    Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -15,6 +16,7 @@ import {
     lightingErrorMessage,
     lightingRequest,
 } from '@/components/lighting/api';
+import { ImportDesignDialog } from '@/components/lighting/import-design-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -74,6 +76,7 @@ export default function LightingIndex() {
     const [form, setForm] = useState<DesignForm>(initialForm);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
+    const [importOpen, setImportOpen] = useState(false);
 
     const loadDesigns = useCallback(async () => {
         try {
@@ -211,6 +214,12 @@ export default function LightingIndex() {
                             <Link href={catalog()}>
                                 <BookOpen /> Component catalog
                             </Link>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={() => setImportOpen(true)}
+                        >
+                            <Upload /> Import Design
                         </Button>
                         <Button onClick={openNew}>
                             <Plus /> New design
@@ -450,6 +459,9 @@ export default function LightingIndex() {
                     </form>
                 </DialogContent>
             </Dialog>
+            {importOpen && (
+                <ImportDesignDialog onClose={() => setImportOpen(false)} />
+            )}
         </>
     );
 }

@@ -36,6 +36,7 @@ export function layoutSnapshot(layout: LightingLayout): LightingSnapshot {
         grid_size_mm: layout.design.grid_size_mm,
         snap_to_grid: layout.design.snap_to_grid,
         notes: layout.design.notes,
+        metadata: layout.design.metadata ?? {},
     };
 
     return {

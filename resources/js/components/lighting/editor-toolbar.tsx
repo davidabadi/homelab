@@ -3,6 +3,7 @@ import {
     BookOpen,
     Check,
     CircleAlert,
+    Download,
     LayoutPanelTop,
     ListTree,
     LoaderCircle,
@@ -47,6 +48,8 @@ export type EditorToolbarProps = {
     onWiring: () => void;
     onRetry: () => void;
     onCatalog: () => void;
+    onExport: () => void;
+    exporting: boolean;
 };
 
 export function EditorToolbar(props: EditorToolbarProps) {
@@ -63,7 +66,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
 
     return (
         <header className="z-20 shrink-0 border-b border-white/10 bg-[#191c22]">
-            <div className="flex min-h-18 items-center gap-4 px-5 xl:px-7">
+            <div className="flex min-h-18 flex-wrap items-center gap-2 px-5 py-3 sm:flex-nowrap sm:gap-4 sm:py-0 xl:px-7">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                     <Button
                         size="icon"
@@ -92,7 +95,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                         />
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="order-3 flex w-full shrink-0 items-center justify-center gap-2 sm:order-none sm:w-auto">
                     <Button
                         onClick={props.onAddDevice}
                         className="h-10 bg-blue-500 px-4 text-white shadow-[0_2px_8px_#0003] hover:bg-blue-400"
@@ -107,7 +110,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                         <Plus className="size-4" /> Add row
                     </Button>
                 </div>
-                <div className="flex flex-1 items-center justify-end gap-3">
+                <div className="flex flex-none items-center justify-end gap-3 sm:flex-1">
                     <span
                         role="status"
                         aria-live="polite"
@@ -180,6 +183,15 @@ export function EditorToolbar(props: EditorToolbarProps) {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={props.onSummary}>
                                     <ListTree /> Design summary
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    disabled={props.exporting}
+                                    onClick={props.onExport}
+                                >
+                                    <Download />{' '}
+                                    {props.exporting
+                                        ? 'Exporting…'
+                                        : 'Export JSON'}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={props.onWiring}>

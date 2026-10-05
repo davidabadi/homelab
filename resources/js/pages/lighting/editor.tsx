@@ -82,6 +82,8 @@ export default function LightingEditor({ designId }: { designId: number }) {
                 onWiring={() => setWiring((value) => !value)}
                 onRetry={editor.retrySave}
                 onCatalog={editor.openCatalog}
+                onExport={editor.exportJson}
+                exporting={editor.exporting}
             />
             <SaveConflictAlert editor={editor} />
             {wiring && (

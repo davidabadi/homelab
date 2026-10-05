@@ -42,6 +42,7 @@ class StoreLightingDesignRequest extends FormRequest
             "{$prefix}grid_size_mm" => [$presence, 'numeric', 'min:0.1', 'max:1000'],
             "{$prefix}snap_to_grid" => [$presence, 'boolean'],
             "{$prefix}notes" => [$complete ? 'present' : 'sometimes', 'nullable', 'string', 'max:10000'],
+            "{$prefix}metadata" => ['sometimes', 'nullable', 'array'],
         ];
     }
 

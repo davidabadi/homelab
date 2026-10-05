@@ -11,6 +11,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import type { CatalogSnapshot } from './interchange';
 import type { ComponentDefinition, TerminalDefinition } from './types';
 
 export const componentCategories = [
@@ -56,47 +57,52 @@ type TerminalForm = Omit<TerminalDefinition, 'x_mm' | 'y_mm' | 'purpose'> & {
 
 export function ComponentDefinitionEditor({
     definition,
+    seed,
     saving,
     error,
     onClose,
     onSave,
 }: {
     definition: ComponentDefinition | null;
+    seed?: CatalogSnapshot;
     saving: boolean;
     error: string | null;
     onClose: () => void;
     onSave: (body: FormData) => Promise<void>;
 }) {
+    const initialDefinition = definition ?? seed;
     const [form, setForm] = useState<DefinitionForm>(() => ({
-        manufacturer: definition?.manufacturer ?? '',
-        model: definition?.model ?? '',
-        display_name: definition?.display_name ?? '',
-        category: definition?.category ?? 'miscellaneous',
-        kind: definition?.kind ?? 'component',
-        sku: definition?.sku ?? '',
-        width_mm: definition ? String(definition.width_mm) : '',
-        height_mm: definition ? String(definition.height_mm) : '',
+        manufacturer: initialDefinition?.manufacturer ?? '',
+        model: initialDefinition?.model ?? '',
+        display_name: initialDefinition?.display_name ?? '',
+        category: initialDefinition?.category ?? 'miscellaneous',
+        kind: initialDefinition?.kind ?? 'component',
+        sku: initialDefinition?.sku ?? '',
+        width_mm: initialDefinition ? String(initialDefinition.width_mm) : '',
+        height_mm: initialDefinition ? String(initialDefinition.height_mm) : '',
         depth_mm:
-            definition?.depth_mm == null ? '' : String(definition.depth_mm),
+            initialDefinition?.depth_mm == null
+                ? ''
+                : String(initialDefinition.depth_mm),
         din_modules:
-            definition?.din_modules == null
+            initialDefinition?.din_modules == null
                 ? ''
-                : String(definition.din_modules),
-        mounting_type: definition?.mounting_type ?? 'din-rail',
+                : String(initialDefinition.din_modules),
+        mounting_type: initialDefinition?.mounting_type ?? 'din-rail',
         mounting_anchor_x_mm:
-            definition?.mounting_anchor_x_mm == null
+            initialDefinition?.mounting_anchor_x_mm == null
                 ? ''
-                : String(definition.mounting_anchor_x_mm),
+                : String(initialDefinition.mounting_anchor_x_mm),
         mounting_anchor_y_mm:
-            definition?.mounting_anchor_y_mm == null
+            initialDefinition?.mounting_anchor_y_mm == null
                 ? ''
-                : String(definition.mounting_anchor_y_mm),
-        image_url: definition?.image_url ?? '',
-        datasheet_url: definition?.datasheet_url ?? '',
-        description: definition?.description ?? '',
+                : String(initialDefinition.mounting_anchor_y_mm),
+        image_url: initialDefinition?.image_url ?? '',
+        datasheet_url: initialDefinition?.datasheet_url ?? '',
+        description: initialDefinition?.description ?? '',
     }));
     const [terminals, setTerminals] = useState<TerminalForm[]>(() =>
-        (definition?.terminals ?? []).map((terminal) => ({
+        (initialDefinition?.terminals ?? []).map((terminal) => ({
             ...terminal,
             x_mm: String(terminal.x_mm),
             y_mm: String(terminal.y_mm),
@@ -105,7 +111,7 @@ export function ComponentDefinitionEditor({
         })),
     );
     const [metadata, setMetadata] = useState(
-        JSON.stringify(definition?.metadata ?? {}, null, 2),
+        JSON.stringify(initialDefinition?.metadata ?? {}, null, 2),
     );
     const [image, setImage] = useState<File | null>(null);
     const [removeImage, setRemoveImage] = useState(false);
@@ -198,7 +204,7 @@ export function ComponentDefinitionEditor({
                     required={options.required}
                     type={options.type ?? 'text'}
                     min={options.min}
-                    step={options.type === 'number' ? '0.01' : undefined}
+                    step={options.type === 'number' ? 'any' : undefined}
                     maxLength={options.type !== 'number' ? 255 : undefined}
                     placeholder={options.placeholder}
                     list={options.list}
@@ -210,23 +216,34 @@ export function ComponentDefinitionEditor({
 
     return (
         <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-            <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-3xl">
+            <DialogContent className="max-h-[calc(100svh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>
                         {definition
                             ? `New revision of ${definition.display_name}`
-                            : 'New component definition'}
+                            : seed
+                              ? `Create ${seed.display_name}`
+                              : 'New component definition'}
                     </DialogTitle>
                     <DialogDescription>
                         {definition
                             ? 'Create a new catalog revision. Existing panel placements keep their original physical dimensions and terminal layout.'
-                            : 'Enter verified product dimensions, or clearly mark sample dimensions in metadata. All dimensions are in millimeters.'}
+                            : seed
+                              ? 'Review the exported product details before adding this component to your catalog. All dimensions are in millimeters.'
+                              : 'Enter verified product dimensions, or clearly mark sample dimensions in metadata. All dimensions are in millimeters.'}
                     </DialogDescription>
                 </DialogHeader>
                 <form
-                    className="grid gap-6"
+                    className="grid grid-cols-1 gap-6"
                     onSubmit={(event) => void submit(event)}
                 >
+                    {seed?.has_local_image && (
+                        <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                            This component had a local product image in the
+                            original catalog. Upload a replacement below if
+                            desired.
+                        </p>
+                    )}
                     <fieldset className="grid gap-3">
                         <legend className="mb-3 text-sm font-semibold">
                             Product details
@@ -491,7 +508,7 @@ export function ComponentDefinitionEditor({
                                                 type="number"
                                                 min="0"
                                                 max={form.width_mm || undefined}
-                                                step="0.01"
+                                                step="any"
                                                 value={terminal.x_mm}
                                                 onChange={(event) =>
                                                     updateTerminal(
@@ -513,7 +530,7 @@ export function ComponentDefinitionEditor({
                                                 max={
                                                     form.height_mm || undefined
                                                 }
-                                                step="0.01"
+                                                step="any"
                                                 value={terminal.y_mm}
                                                 onChange={(event) =>
                                                     updateTerminal(

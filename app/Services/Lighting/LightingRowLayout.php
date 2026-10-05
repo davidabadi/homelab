@@ -60,8 +60,9 @@ class LightingRowLayout
             $rail['width_mm'] = 35;
 
             $indices = array_keys(array_filter($layout['components'], static fn (array $component): bool => ($component['rail_portable_id'] ?? null) === $rail['portable_id']));
-            usort($indices, static fn (int $left, int $right): int => $layout['components'][$left]['sort_order'] <=> $layout['components'][$right]['sort_order']);
-            $position = $rail['x_mm'];
+            usort($indices, static fn (int $left, int $right): int => $layout['components'][$left]['x_mm'] <=> $layout['components'][$right]['x_mm']
+                ?: $layout['components'][$left]['sort_order'] <=> $layout['components'][$right]['sort_order']
+                ?: strcmp($layout['components'][$left]['portable_id'], $layout['components'][$right]['portable_id']));
             foreach ($indices as $itemOrder => $index) {
                 $component = &$layout['components'][$index];
                 $definition = $definitions->get($component['component_definition_id']);
@@ -71,10 +72,9 @@ class LightingRowLayout
                     continue;
                 }
                 $component['sort_order'] = $itemOrder;
-                $component['x_mm'] = round($position, 2);
+                $component['x_mm'] = round($component['x_mm'], 2);
                 $component['y_mm'] = round($rail['y_mm'] + 17.5 - ($definition->mounting_anchor_y_mm ?? $definition->height_mm / 2), 2);
                 $component['rotation'] = 0;
-                $position += $definition->width_mm;
                 unset($component);
             }
         }

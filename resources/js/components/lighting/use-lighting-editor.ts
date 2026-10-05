@@ -2,9 +2,20 @@ import { router } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { catalog, home } from '@/routes/lighting';
 import { index as definitionIndex } from '@/routes/lighting/definitions';
-import { destroy, edit, show, store } from '@/routes/lighting/designs';
+import {
+    destroy,
+    edit,
+    exportMethod,
+    show,
+    store,
+} from '@/routes/lighting/designs';
 import { update as saveLayout } from '@/routes/lighting/designs/layout';
-import { lightingRequest, lightingErrorMessage, LightingApiError } from './api';
+import {
+    lightingRequest,
+    lightingErrorMessage,
+    LightingApiError,
+    downloadLightingJson,
+} from './api';
 import {
     moveLayoutObject,
     reconcileRailAttachments,
@@ -66,6 +77,7 @@ export function useLightingEditor(designId: number) {
     const [showLabels, setShowLabels] = useState(true);
     const [leaveDialog, setLeaveDialog] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [recoveryCleanupError, setRecoveryCleanupError] = useState<
         string | null
     >(null);
@@ -402,14 +414,6 @@ export function useLightingEditor(designId: number) {
                               current,
                               definition,
                               component.rail_portable_id,
-                              panelRowItems(
-                                  current,
-                                  component.rail_portable_id,
-                              ).findIndex(
-                                  (item) =>
-                                      item.portable_id ===
-                                      component.portable_id,
-                              ) + 1,
                           )
                         : duplicateLayoutObject(current, selected);
 
@@ -488,7 +492,7 @@ export function useLightingEditor(designId: number) {
         (
             definition: ComponentDefinition,
             rowId?: string,
-            index?: number,
+            xMm?: number,
         ): boolean => {
             const current = layoutRef.current;
 
@@ -511,7 +515,7 @@ export function useLightingEditor(designId: number) {
             let result: ReturnType<typeof placePanelDevice>;
 
             try {
-                result = placePanelDevice(current, definition, target, index);
+                result = placePanelDevice(current, definition, target, xMm);
             } catch (caught) {
                 setOperationError(lightingErrorMessage(caught));
 
@@ -554,7 +558,19 @@ export function useLightingEditor(designId: number) {
 
         let next = current;
 
-        if ('x_mm' in attributes || 'y_mm' in attributes) {
+        if (
+            component.rail_portable_id &&
+            ('x_mm' in attributes || 'y_mm' in attributes)
+        ) {
+            next = rerouteConnections({
+                ...current,
+                components: current.components.map((item) =>
+                    item.portable_id === id
+                        ? { ...item, x_mm: attributes.x_mm ?? component.x_mm }
+                        : item,
+                ),
+            });
+        } else if ('x_mm' in attributes || 'y_mm' in attributes) {
             next = moveLayoutObject(
                 current,
                 { type: 'component', id },
@@ -824,7 +840,7 @@ export function useLightingEditor(designId: number) {
     function moveComponent(
         componentId: string,
         rowId: string,
-        index?: number,
+        xMm?: number,
     ): boolean {
         const current = layoutRef.current;
 
@@ -835,7 +851,7 @@ export function useLightingEditor(designId: number) {
         try {
             if (
                 !changeLayout(
-                    movePanelDevice(current, componentId, rowId, index),
+                    movePanelDevice(current, componentId, rowId, xMm),
                     true,
                     true,
                 )
@@ -872,6 +888,36 @@ export function useLightingEditor(designId: number) {
             setOperationError(lightingErrorMessage(caught));
 
             return false;
+        }
+    }
+
+    async function exportJson(): Promise<void> {
+        const current = layoutRef.current;
+
+        if (!current || exporting) {
+            return;
+        }
+
+        setExporting(true);
+        setOperationError(null);
+
+        try {
+            const { design, components, rails, ducts, connections } =
+                layoutSnapshot(current);
+            await downloadLightingJson(
+                exportMethod.url(designId),
+                structuredClone({
+                    design,
+                    components,
+                    rails,
+                    ducts,
+                    connections,
+                }),
+            );
+        } catch (caught) {
+            setOperationError(lightingErrorMessage(caught));
+        } finally {
+            setExporting(false);
         }
     }
 
@@ -997,6 +1043,8 @@ export function useLightingEditor(designId: number) {
         removeRow,
         moveRow,
         moveComponent,
+        exportJson,
+        exporting,
         reorderComponent,
         addRail,
         addDuct,

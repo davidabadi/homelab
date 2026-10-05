@@ -3,8 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Services\Lighting\LightingGeometry;
+use App\Services\Lighting\LightingInterchangeV1;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 use JsonException;
 
@@ -17,7 +19,7 @@ class StoreLightingComponentDefinitionRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['terminals', 'metadata'] as $field) {
+        foreach (['terminals', 'metadata', 'import_snapshot'] as $field) {
             if (! is_string($this->input($field))) {
                 continue;
             }
@@ -38,6 +40,15 @@ class StoreLightingComponentDefinitionRequest extends FormRequest
 
     /** @return array<string, array<mixed>> */
     public function rules(): array
+    {
+        return [
+            ...self::definitionRules(),
+            'import_snapshot' => ['sometimes', 'array'],
+        ];
+    }
+
+    /** @return array<string, array<mixed>> */
+    public static function definitionRules(): array
     {
         return [
             'manufacturer' => ['required', 'string', 'max:255'],
@@ -87,6 +98,17 @@ class StoreLightingComponentDefinitionRequest extends FormRequest
                 foreach (['x' => 'width_mm', 'y' => 'height_mm'] as $axis => $dimension) {
                     if ($this->input("mounting_anchor_{$axis}_mm") > $this->input($dimension)) {
                         $validator->errors()->add("mounting_anchor_{$axis}_mm", 'The mounting anchor must fit inside the component dimensions.');
+                    }
+                }
+                if ($this->has('import_snapshot')) {
+                    try {
+                        LightingInterchangeV1::validateCatalogSnapshot($this->input('import_snapshot'));
+                    } catch (ValidationException $exception) {
+                        foreach ($exception->errors() as $field => $messages) {
+                            foreach ($messages as $message) {
+                                $validator->errors()->add("import_snapshot.{$field}", $message);
+                            }
+                        }
                     }
                 }
             },

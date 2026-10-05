@@ -18,6 +18,7 @@ class LightingDesignPresenter
         return [
             'id' => $design->id,
             ...Arr::only($design->toArray(), LightingDesign::EDITABLE_FIELDS),
+            'metadata' => (object) ($design->metadata ?? []),
             'save_version' => $design->save_version,
             'updated_at' => $design->updated_at?->toIso8601String(),
             'components_count' => (int) ($design->getAttribute('components_count') ?? 0),

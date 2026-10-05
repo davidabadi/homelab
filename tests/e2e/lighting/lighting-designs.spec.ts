@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { test as unmonitoredTest } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import type {
+    CatalogSnapshot,
+    LightingInterchangeDocument,
+} from '../../../resources/js/components/lighting/interchange';
+import type {
     ComponentDefinition,
+    DesignRail,
     LightingLayout,
 } from '../../../resources/js/components/lighting/types';
 import { expect, test } from '../fixtures/test';
@@ -156,7 +161,9 @@ function orderedRowItems(layout: LightingLayout, rowId: string) {
     return layout.components
         .filter((component) => component.rail_portable_id === rowId)
         .sort(
-            (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+            (left, right) =>
+                left.x_mm - right.x_mm ||
+                (left.sort_order ?? 0) - (right.sort_order ?? 0),
         );
 }
 
@@ -166,10 +173,119 @@ function rowStructure(layout: LightingLayout) {
         items: orderedRowItems(layout, row.portable_id).map((component) => ({
             component_definition_id: component.component_definition_id,
             sort_order: component.sort_order,
+            x_mm: component.x_mm,
+            y_mm: component.y_mm,
             custom_label: component.custom_label,
             notes: component.notes,
         })),
     }));
+}
+
+function physicalLayout(layout: LightingLayout) {
+    const definitions = new Map(
+        layout.definitions.map((definition) => [definition.id, definition]),
+    );
+
+    return {
+        design: {
+            width_mm: layout.design.width_mm,
+            height_mm: layout.design.height_mm,
+            depth_mm: layout.design.depth_mm,
+            margin_top_mm: layout.design.margin_top_mm,
+            margin_right_mm: layout.design.margin_right_mm,
+            margin_bottom_mm: layout.design.margin_bottom_mm,
+            margin_left_mm: layout.design.margin_left_mm,
+            metadata: layout.design.metadata,
+        },
+        rows: orderedRows(layout).map((row) => ({
+            x_mm: row.x_mm,
+            y_mm: row.y_mm,
+            length_mm: row.length_mm,
+            width_mm: row.width_mm,
+            items: orderedRowItems(layout, row.portable_id).map((component) => {
+                const definition = definitions.get(
+                    component.component_definition_id,
+                )!;
+
+                return {
+                    catalog_family_id: definition.catalog_family_id,
+                    revision: definition.revision,
+                    x_mm: component.x_mm,
+                    y_mm: component.y_mm,
+                    rotation: component.rotation,
+                    custom_label: component.custom_label,
+                    notes: component.notes,
+                    metadata: component.metadata,
+                };
+            }),
+        })),
+    };
+}
+
+async function dragComponentTo(
+    page: Page,
+    componentId: string,
+    row: DesignRail,
+    xMm: number,
+    cancel = false,
+): Promise<void> {
+    const device = componentNode(page, componentId);
+    await device.scrollIntoViewIfNeeded();
+    const track = page.getByTestId(`lighting-row-track-${row.portable_id}`);
+    await track.scrollIntoViewIfNeeded();
+    const deviceBounds = await device.boundingBox();
+    const trackBounds = await track.boundingBox();
+    expect(deviceBounds).not.toBeNull();
+    expect(trackBounds).not.toBeNull();
+    const grabOffset = deviceBounds!.width / 2;
+    const scale = trackBounds!.width / row.length_mm;
+    await page.mouse.move(deviceBounds!.x + grabOffset, deviceBounds!.y + 45);
+    await page.mouse.down();
+
+    try {
+        await page.mouse.move(
+            trackBounds!.x + (xMm - row.x_mm) * scale + grabOffset,
+            trackBounds!.y + 45,
+            { steps: 20 },
+        );
+        await expect(page.getByTestId('lighting-drag-preview')).toBeVisible();
+        await expect(panelRow(page, row.portable_id)).toHaveAttribute(
+            'data-drop-state',
+            'valid',
+        );
+
+        if (cancel) {
+            await page.keyboard.press('Escape');
+            await expect(
+                page.getByTestId('lighting-drag-preview'),
+            ).toBeHidden();
+        }
+    } finally {
+        await page.mouse.up();
+    }
+}
+
+async function exportDesign(page: Page): Promise<{
+    path: string;
+    document: LightingInterchangeDocument;
+    filename: string;
+}> {
+    await page.getByRole('button', { name: 'Panel menu', exact: true }).click();
+    const downloading = page.waitForEvent('download');
+    await page
+        .getByRole('menuitem', { name: 'Export JSON', exact: true })
+        .click();
+    const download = await downloading;
+    const path = await download.path();
+    expect(path).not.toBeNull();
+    const contents = await readFile(path!, 'utf8');
+    expect(contents).toContain('\n    "');
+
+    return {
+        path: path!,
+        document: JSON.parse(contents) as LightingInterchangeDocument,
+        filename: download.suggestedFilename(),
+    };
 }
 
 async function expectRowItems(
@@ -336,17 +452,44 @@ test('arranges devices on three rows, reloads, and duplicates an independent pan
             relayId,
             terminalId,
         ]);
+        await expect(
+            inspector(page).getByRole('button', {
+                name: 'Move left',
+                exact: true,
+            }),
+        ).toBeDisabled();
+        const beforeNudge = (await readLayout(page, designId)).components.find(
+            (component) => component.portable_id === terminalId,
+        )!;
         await inspector(page)
-            .getByRole('button', { name: 'Move left', exact: true })
+            .getByRole('button', { name: 'Move right', exact: true })
             .click();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === terminalId,
+                    )?.x_mm,
+            )
+            .toBe(beforeNudge.x_mm + 1);
+        const relayDefinition = (
+            await readLayout(page, designId)
+        ).definitions.find(
+            (definition) => definition.display_name === 'Shelly Pro 4PM (V2)',
+        )!;
+        await dragComponentTo(
+            page,
+            relayId,
+            secondRow,
+            Math.floor(
+                secondRow.x_mm + secondRow.length_mm - relayDefinition.width_mm,
+            ),
+        );
         await expectRowItems(page, designId, secondRow.portable_id, [
             terminalId,
             relayId,
         ]);
-        await componentNode(page, relayId).dragTo(
-            componentNode(page, terminalId),
-            { targetPosition: { x: 4, y: 80 } },
-        );
+        await dragComponentTo(page, relayId, secondRow, secondRow.x_mm);
         await expectRowItems(page, designId, secondRow.portable_id, [
             relayId,
             terminalId,
@@ -443,6 +586,455 @@ test('arranges devices on three rows, reloads, and duplicates an independent pan
         });
     } finally {
         await cleanupDesigns(page, name);
+    }
+});
+
+test('keeps intentional DIN gaps through reload and a JSON export/import round trip', async ({
+    context,
+    page,
+}, testInfo) => {
+    test.setTimeout(90_000);
+    const name = `Lighting E2E roundtrip ${randomUUID()}`;
+    await openLighting(context, page);
+
+    try {
+        const designId = await createDesign(page, name);
+        const initial = await readLayout(page, designId);
+        const row = orderedRows(initial)[0];
+        const rightId = await placeComponent(
+            page,
+            designId,
+            'Shelly Pro 4PM (V2)',
+            row.portable_id,
+        );
+        const rightDefinition = (
+            await readLayout(page, designId)
+        ).definitions.find(
+            (definition) => definition.display_name === 'Shelly Pro 4PM (V2)',
+        )!;
+        const farRightX = Math.floor(
+            row.x_mm + row.length_mm - rightDefinition.width_mm,
+        );
+        await dragComponentTo(page, rightId, row, farRightX);
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === rightId,
+                    )?.x_mm,
+            )
+            .toBe(farRightX);
+        await expect(componentNode(page, rightId)).toHaveAttribute(
+            'data-x-mm',
+            String(farRightX),
+        );
+        const beforeCancel = await readLayout(page, designId);
+        const secondRow = orderedRows(initial)[1];
+        await dragComponentTo(page, rightId, secondRow, farRightX, true);
+        expect(physicalLayout(await readLayout(page, designId))).toEqual(
+            physicalLayout(beforeCancel),
+        );
+        await page
+            .getByRole('button', { name: 'Add device to Row 02', exact: true })
+            .click();
+        await expect(
+            page.getByRole('dialog', { name: 'Add device', exact: true }),
+        ).toBeVisible();
+        await page.keyboard.press('Escape');
+        await dragComponentTo(page, rightId, secondRow, farRightX);
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === rightId,
+                    )?.rail_portable_id,
+            )
+            .toBe(secondRow.portable_id);
+        await page
+            .getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true })
+            .click();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === rightId,
+                    )?.rail_portable_id,
+            )
+            .toBe(row.portable_id);
+        await page
+            .getByRole('button', { name: 'Redo (Ctrl+Shift+Z)', exact: true })
+            .click();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === rightId,
+                    )?.rail_portable_id,
+            )
+            .toBe(secondRow.portable_id);
+        await page
+            .getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true })
+            .click();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === rightId,
+                    )?.rail_portable_id,
+            )
+            .toBe(row.portable_id);
+        await componentNode(page, rightId).click();
+        await inspector(page).getByLabel('Custom label').fill('Right group');
+        await inspector(page).getByLabel('Custom label').blur();
+
+        const leftId = await placeComponent(
+            page,
+            designId,
+            'Shelly Pro Dimmer 2PM',
+            row.portable_id,
+        );
+        await inspector(page).getByLabel('Custom label').fill('Left group');
+        await inspector(page).getByLabel('Custom label').blur();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, designId)).components.find(
+                        (component) => component.portable_id === leftId,
+                    )?.custom_label,
+            )
+            .toBe('Left group');
+        const original = await readLayout(page, designId);
+        const left = original.components.find(
+            (component) => component.portable_id === leftId,
+        )!;
+        const right = original.components.find(
+            (component) => component.portable_id === rightId,
+        )!;
+        const leftDefinition = original.definitions.find(
+            (definition) => definition.id === left.component_definition_id,
+        )!;
+        expect(left.x_mm).toBe(row.x_mm);
+        expect(
+            right.x_mm - left.x_mm - leftDefinition.width_mm,
+        ).toBeGreaterThan(100);
+        await expect(panelRow(page, row.portable_id)).toContainText(
+            'largest gap',
+        );
+
+        await page.reload();
+        await expect(componentNode(page, leftId)).toHaveAttribute(
+            'data-x-mm',
+            String(left.x_mm),
+        );
+        await expect(componentNode(page, rightId)).toHaveAttribute(
+            'data-x-mm',
+            String(right.x_mm),
+        );
+        expect(physicalLayout(await readLayout(page, designId))).toEqual(
+            physicalLayout(original),
+        );
+        await page.screenshot({
+            path: testInfo.outputPath('persistent-large-din-gap.png'),
+        });
+
+        const exported = await exportDesign(page);
+        expect(exported.filename).toMatch(/\.lighting\.json$/);
+        expect(exported.document.format).toBe('homelab-lighting-design');
+        expect(exported.document.schema_version).toBe(1);
+        expect(exported.document.design).not.toHaveProperty('id');
+        expect(exported.document.components[0]).not.toHaveProperty(
+            'component_definition_id',
+        );
+        await page
+            .getByRole('button', { name: 'Back to designs', exact: true })
+            .click();
+        await page
+            .getByRole('button', { name: 'Import Design', exact: true })
+            .click();
+        const dialog = page.getByRole('dialog', {
+            name: 'Import Design',
+            exact: true,
+        });
+        await dialog
+            .getByLabel('Design JSON file')
+            .setInputFiles(exported.path);
+        await expect(dialog.getByLabel('New design name')).toHaveValue(
+            `${name} (imported)`,
+        );
+        await expect(dialog).toContainText('All resolved');
+        await expect(
+            dialog.getByRole('button', {
+                name: 'Import new design',
+                exact: true,
+            }),
+        ).toBeEnabled();
+        await dialog
+            .getByRole('button', { name: 'Import new design', exact: true })
+            .click();
+        await expect(page).toHaveURL(/\/designs\/\d+$/);
+        const importedId = Number(
+            new URL(page.url()).pathname.split('/').at(-1),
+        );
+        expect(importedId).not.toBe(designId);
+        const imported = await readLayout(page, importedId);
+        expect(physicalLayout(imported)).toEqual(physicalLayout(original));
+
+        for (const importedRow of imported.rails) {
+            expect(
+                original.rails.map((item) => item.portable_id),
+            ).not.toContain(importedRow.portable_id);
+        }
+
+        for (const component of imported.components) {
+            expect(
+                original.components.map((item) => item.portable_id),
+            ).not.toContain(component.portable_id);
+            await expect(
+                componentNode(page, component.portable_id),
+            ).toHaveAttribute('data-x-mm', String(component.x_mm));
+        }
+
+        const importedRight = imported.components.find(
+            (component) => component.custom_label === 'Right group',
+        )!;
+        await componentNode(page, importedRight.portable_id).click();
+        await inspector(page).getByLabel('Custom label').fill('Imported only');
+        await inspector(page).getByLabel('Custom label').blur();
+        await expect
+            .poll(
+                async () =>
+                    (await readLayout(page, importedId)).components.find(
+                        (component) =>
+                            component.portable_id === importedRight.portable_id,
+                    )?.custom_label,
+            )
+            .toBe('Imported only');
+        expect(
+            (await readLayout(page, designId)).components.find(
+                (component) => component.portable_id === rightId,
+            )?.custom_label,
+        ).toBe('Right group');
+        await page.screenshot({
+            path: testInfo.outputPath('imported-physical-layout.png'),
+        });
+    } finally {
+        await cleanupDesigns(page, name);
+    }
+});
+
+test('requires review of missing catalog snapshots and keeps explicitly created components after cancel', async ({
+    context,
+    page,
+}) => {
+    test.setTimeout(90_000);
+    const name = `Lighting E2E import catalog ${randomUUID()}`;
+    const componentName = `${name} component`;
+    const familyId = randomUUID();
+    await openLighting(context, page);
+
+    try {
+        const originalId = await createDesign(page, name);
+        await placeComponent(page, originalId, 'Shelly Pro 4PM (V2)');
+        const exported = await exportDesign(page);
+        const snapshot = exported.document.catalog[0] as CatalogSnapshot;
+        snapshot.catalog_family_id = familyId;
+        snapshot.manufacturer = 'E2E import fixture';
+        snapshot.model = 'Imported-controller';
+        snapshot.display_name = componentName;
+        snapshot.image_url = null;
+        snapshot.datasheet_url = null;
+        snapshot.has_local_image = true;
+        snapshot.metadata = {
+            imported_fixture: true,
+            product_note: 'Preserved snapshot',
+        };
+        exported.document.design.name = `${name} fixture`;
+
+        for (const component of exported.document.components) {
+            component.catalog_ref = {
+                catalog_family_id: familyId,
+                revision: snapshot.revision,
+            };
+        }
+
+        const file = {
+            name: 'missing-catalog.lighting.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(exported.document, null, 2)),
+        };
+        await page
+            .getByRole('button', { name: 'Back to designs', exact: true })
+            .click();
+
+        async function openImport(): Promise<Locator> {
+            await page
+                .getByRole('button', { name: 'Import Design', exact: true })
+                .click();
+            const dialog = page.getByRole('dialog', {
+                name: 'Import Design',
+                exact: true,
+            });
+            await dialog.getByLabel('Design JSON file').setInputFiles(file);
+
+            return dialog;
+        }
+
+        let dialog = await openImport();
+        await expect(dialog).toContainText('1 to resolve');
+        await expect(
+            dialog.getByRole('button', {
+                name: 'Import new design',
+                exact: true,
+            }),
+        ).toBeDisabled();
+        await expect(
+            dialog.getByText('Missing', { exact: true }),
+        ).toBeVisible();
+        const beforeCancel = await api<{
+            designs: { id: number; name: string }[];
+        }>(page, '/api/designs');
+        expect(
+            beforeCancel.designs.filter((design) =>
+                design.name.startsWith(name),
+            ),
+        ).toHaveLength(1);
+        await dialog
+            .getByRole('button', { name: 'Cancel', exact: true })
+            .click();
+        await expect(dialog).toBeHidden();
+        const untouchedCatalog = await api<{
+            definitions: ComponentDefinition[];
+        }>(page, '/api/component-definitions');
+        expect(
+            untouchedCatalog.definitions.some(
+                (definition) => definition.catalog_family_id === familyId,
+            ),
+        ).toBe(false);
+
+        dialog = await openImport();
+        await expect(dialog).toContainText('1 to resolve');
+        await dialog
+            .getByRole('button', { name: 'Create component', exact: true })
+            .click();
+        const editor = page.getByRole('dialog', {
+            name: `Create ${componentName}`,
+            exact: true,
+        });
+        await expect(
+            editor.getByLabel('Display name', { exact: true }),
+        ).toHaveValue(componentName);
+        await expect(
+            editor.getByLabel('Manufacturer', { exact: true }),
+        ).toHaveValue(snapshot.manufacturer);
+        await expect(editor.getByLabel('Model', { exact: true })).toHaveValue(
+            snapshot.model,
+        );
+        await expect(
+            editor.getByLabel('Width (mm)', { exact: true }),
+        ).toHaveValue(String(snapshot.width_mm));
+        await expect(
+            editor.getByLabel('Height (mm)', { exact: true }),
+        ).toHaveValue(String(snapshot.height_mm));
+
+        if (snapshot.terminals.length > 0) {
+            await expect(
+                editor.getByLabel('Key', { exact: true }).first(),
+            ).toHaveValue(snapshot.terminals[0].key);
+        }
+
+        await editor
+            .getByText('Product metadata (JSON)', { exact: true })
+            .click();
+        expect(
+            JSON.parse(await editor.getByLabel('Metadata JSON').inputValue()),
+        ).toEqual(snapshot.metadata);
+        await expect(editor).toContainText('had a local product image');
+        await editor.getByLabel(/^Local product image/).setInputFiles({
+            name: 'lighting-import-fixture.png',
+            mimeType: 'image/png',
+            buffer: await readFile('public/icons/homelab.png'),
+        });
+        await editor
+            .getByRole('button', { name: 'Create component', exact: true })
+            .click();
+        await expect(editor).toBeHidden();
+        dialog = page.getByRole('dialog', {
+            name: 'Import Design',
+            exact: true,
+        });
+        await expect(dialog).toContainText('All resolved');
+        await expect(
+            dialog.getByRole('button', {
+                name: 'Import new design',
+                exact: true,
+            }),
+        ).toBeEnabled();
+        await expect(dialog).toContainText('even if you cancel');
+        await dialog
+            .getByRole('button', { name: 'Cancel', exact: true })
+            .click();
+        const createdCatalog = await api<{
+            definitions: ComponentDefinition[];
+        }>(page, '/api/component-definitions');
+        const created = createdCatalog.definitions.find(
+            (definition) => definition.catalog_family_id === familyId,
+        )!;
+        expect(created).toBeDefined();
+        expect(created.revision).toBe(snapshot.revision);
+        expect(created.metadata).toEqual(snapshot.metadata);
+        expect(created.local_image_url).not.toBeNull();
+        const afterCancel = await api<{
+            designs: { id: number; name: string }[];
+        }>(page, '/api/designs');
+        expect(
+            afterCancel.designs.filter((design) =>
+                design.name.startsWith(name),
+            ),
+        ).toHaveLength(1);
+
+        dialog = await openImport();
+        await expect(
+            dialog.getByText('Matched', { exact: true }),
+        ).toBeVisible();
+        await expect(
+            dialog.getByRole('button', {
+                name: 'Create component',
+                exact: true,
+            }),
+        ).toHaveCount(0);
+        await dialog
+            .getByRole('button', { name: 'Import new design', exact: true })
+            .click();
+        await expect(page).toHaveURL(/\/designs\/\d+$/);
+        const importedId = Number(
+            new URL(page.url()).pathname.split('/').at(-1),
+        );
+        expect(importedId).not.toBe(originalId);
+        const imported = await readLayout(page, importedId);
+        expect(imported.components).toHaveLength(1);
+        expect(imported.components[0].component_definition_id).toBe(created.id);
+        await expect(
+            componentNode(page, imported.components[0].portable_id).locator(
+                'img',
+            ),
+        ).toHaveAttribute('src', created.local_image_url!);
+    } finally {
+        await cleanupDesigns(page, name);
+        const catalog = await api<{ definitions: ComponentDefinition[] }>(
+            page,
+            '/api/component-definitions',
+        );
+        const fixture = catalog.definitions.find(
+            (definition) => definition.catalog_family_id === familyId,
+        );
+
+        if (fixture) {
+            await api(
+                page,
+                `/api/component-definitions/${fixture.id}`,
+                'DELETE',
+            );
+        }
     }
 });
 

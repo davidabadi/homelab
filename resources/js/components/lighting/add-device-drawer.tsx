@@ -10,6 +10,7 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet';
 import { ComponentImage } from './component-image';
+import { panelRowSpace } from './panel-layout';
 import type { LightingLayout } from './types';
 import type { LightingEditorController } from './use-lighting-editor';
 
@@ -59,20 +60,9 @@ export function AddDeviceDrawer({
     );
     const selectedRow =
         rows.find((row) => row.portable_id === editor.selectedRowId) ?? rows[0];
-    const usedWidth = layout.components
-        .filter(
-            (component) =>
-                component.rail_portable_id === selectedRow?.portable_id,
-        )
-        .reduce(
-            (width, component) =>
-                width +
-                (layout.definitions.find(
-                    (definition) =>
-                        definition.id === component.component_definition_id,
-                )?.width_mm ?? 0),
-            0,
-        );
+    const space = selectedRow
+        ? panelRowSpace(layout, selectedRow.portable_id)
+        : null;
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -109,12 +99,9 @@ export function AddDeviceDrawer({
                     </label>
                     {selectedRow ? (
                         <p className="text-xs text-slate-500">
-                            {Math.max(
-                                0,
-                                Math.round(selectedRow.length_mm - usedWidth),
-                            )}{' '}
-                            mm available. Devices are added at the end of the
-                            row.
+                            {space?.total_free_mm} mm total free ·{' '}
+                            {space?.largest_gap_mm} mm largest gap. Devices use
+                            the first gap that fits.
                         </p>
                     ) : (
                         <Button

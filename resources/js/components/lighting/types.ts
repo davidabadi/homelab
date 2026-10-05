@@ -48,6 +48,7 @@ export type LightingDesign = {
     grid_size_mm: number;
     snap_to_grid: boolean;
     notes: string | null;
+    metadata: Record<string, unknown>;
     save_version: number;
     updated_at: string;
 };

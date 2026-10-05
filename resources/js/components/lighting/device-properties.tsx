@@ -2,7 +2,9 @@ import { ArrowLeft, ArrowRight, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ComponentImage } from './component-image';
+import { nudgeDinPosition } from './din-placement';
 import { NotesField, ReadOnlyValue } from './inspector-fields';
+import { panelDevicePosition } from './panel-layout';
 import type {
     ComponentDefinition,
     LightingLayout,
@@ -30,14 +32,26 @@ export function DeviceProperties({
     const rows = [...(layout?.rails ?? [])].sort(
         (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
     );
-    const items = (layout?.components ?? [])
-        .filter((item) => item.rail_portable_id === component.rail_portable_id)
-        .sort(
-            (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
-        );
-    const index = items.findIndex(
-        (item) => item.portable_id === component.portable_id,
+    const row = rows.find(
+        (item) => item.portable_id === component.rail_portable_id,
     );
+    const canNudge = (direction: -1 | 1): boolean => {
+        if (!layout || !row) {
+            return false;
+        }
+
+        const candidate = nudgeDinPosition(component.x_mm, direction);
+
+        return (
+            panelDevicePosition(
+                layout,
+                row.portable_id,
+                definition.width_mm,
+                candidate,
+                component.portable_id,
+            ) === candidate
+        );
+    };
 
     return (
         <>
@@ -96,11 +110,76 @@ export function DeviceProperties({
                         </select>
                     </label>
                     {component.rail_portable_id && onReorder && (
+                        <label className="grid gap-2 text-sm text-slate-300">
+                            Position on row (mm)
+                            <Input
+                                key={`${component.portable_id}:${component.x_mm}`}
+                                className="h-10 border-white/15 bg-white/5 text-sm"
+                                type="number"
+                                min={0}
+                                max={
+                                    row
+                                        ? row.length_mm - definition.width_mm
+                                        : undefined
+                                }
+                                step="1"
+                                defaultValue={Number(
+                                    (component.x_mm - (row?.x_mm ?? 0)).toFixed(
+                                        2,
+                                    ),
+                                )}
+                                onBlur={(event) => {
+                                    const relativePosition = Number(
+                                        event.target.value,
+                                    );
+                                    const candidate =
+                                        relativePosition + (row?.x_mm ?? 0);
+
+                                    if (
+                                        event.target.value !== '' &&
+                                        Number.isFinite(relativePosition)
+                                    ) {
+                                        onUpdate(component.portable_id, {
+                                            x_mm: candidate,
+                                        });
+                                    }
+
+                                    if (
+                                        event.target.value === '' ||
+                                        !Number.isFinite(relativePosition) ||
+                                        !row ||
+                                        panelDevicePosition(
+                                            layout,
+                                            row.portable_id,
+                                            definition.width_mm,
+                                            candidate,
+                                            component.portable_id,
+                                        ) !== candidate
+                                    ) {
+                                        event.target.value = String(
+                                            Number(
+                                                (
+                                                    component.x_mm -
+                                                    (row?.x_mm ?? 0)
+                                                ).toFixed(2),
+                                            ),
+                                        );
+                                    }
+                                }}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                    }
+                                }}
+                            />
+                        </label>
+                    )}
+                    {component.rail_portable_id && onReorder && (
                         <div className="grid grid-cols-2 gap-2">
                             <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={index <= 0}
+                                disabled={!canNudge(-1)}
                                 onClick={() =>
                                     onReorder(component.portable_id, -1)
                                 }
@@ -110,7 +189,7 @@ export function DeviceProperties({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={index >= items.length - 1}
+                                disabled={!canNudge(1)}
                                 onClick={() =>
                                     onReorder(component.portable_id, 1)
                                 }
