@@ -94,6 +94,7 @@ export default function LightingEditor({ designId }: { designId: number }) {
                 onRetry={editor.retrySave}
                 onCatalog={editor.openCatalog}
                 onExport={editor.exportJson}
+                onExportWiring={editor.exportWiringPdf}
                 exporting={editor.exporting}
             />
             <SaveConflictAlert editor={editor} />
@@ -200,7 +201,7 @@ export default function LightingEditor({ designId }: { designId: number }) {
                     </span>
                 </div>
             )}
-            <EditorWorkspace editor={editor} layout={layout}>
+            <EditorWorkspace editor={editor} layout={layout} wiring={wiring}>
                 {wiring ? (
                     <PanelCanvas
                         layout={layout}

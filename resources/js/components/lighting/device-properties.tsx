@@ -1,13 +1,22 @@
-import { ArrowLeft, ArrowRight, Copy } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, Copy } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cableClassStyle } from './cabling-style';
 import { ComponentImage } from './component-image';
+import {
+    getTerminalConnections,
+    terminalConnectionSummary,
+    terminalDisplayLabel,
+} from './connection-lookup';
 import { nudgeDinPosition } from './din-placement';
 import { NotesField, ReadOnlyValue } from './inspector-fields';
 import { panelDevicePosition } from './panel-layout';
+import { RoutePicker } from './route-picker';
 import type {
     ComponentDefinition,
     LightingLayout,
+    LightingSelection,
     PlacedComponent,
 } from './types';
 
@@ -19,6 +28,7 @@ export function DeviceProperties({
     onDuplicate,
     onMove,
     onReorder,
+    onSelectionChange,
 }: {
     component: PlacedComponent;
     definition: ComponentDefinition;
@@ -28,7 +38,20 @@ export function DeviceProperties({
     onDetach?: (id: string) => void;
     onMove?: (id: string, rowId: string) => void;
     onReorder?: (id: string, direction: -1 | 1) => void;
+    onSelectionChange?: (selection: LightingSelection) => void;
 }) {
+    const [pickerTerminal, setPickerTerminal] = useState<string | null>(null);
+    const pickerDefinition = definition.terminals.find(
+        (terminal) => terminal.key === pickerTerminal,
+    );
+    const pickerConnections =
+        layout && pickerTerminal
+            ? getTerminalConnections(
+                  layout,
+                  component.portable_id,
+                  pickerTerminal,
+              )
+            : [];
     const rows = [...(layout?.rails ?? [])].sort(
         (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
     );
@@ -238,7 +261,10 @@ export function DeviceProperties({
                 value={component.notes}
                 onChange={(notes) => onUpdate(component.portable_id, { notes })}
             />
-            <details className="rounded-lg border border-white/10 p-3">
+            <details
+                className="rounded-lg border border-white/10 p-3"
+                open={onSelectionChange ? true : undefined}
+            >
                 <summary className="cursor-pointer text-sm font-medium text-slate-300">
                     Terminals ({definition.terminals.length})
                 </summary>
@@ -248,21 +274,109 @@ export function DeviceProperties({
                             No terminals in this catalog revision.
                         </p>
                     )}
-                    {definition.terminals.map((terminal) => (
-                        <div
-                            key={terminal.key}
-                            className="flex justify-between gap-3 rounded bg-white/5 px-2 py-1.5 text-xs"
-                        >
-                            <span className="font-medium text-slate-300">
-                                {terminal.label}
-                            </span>
-                            <span className="text-slate-500">
-                                {terminal.purpose || terminal.side}
-                            </span>
-                        </div>
-                    ))}
+                    {definition.terminals.map((terminal) => {
+                        const connections = layout
+                            ? getTerminalConnections(
+                                  layout,
+                                  component.portable_id,
+                                  terminal.key,
+                              )
+                            : [];
+                        const summary = terminalConnectionSummary(connections);
+                        const route =
+                            connections.length === 1 ? connections[0] : null;
+                        const clickable =
+                            connections.length > 0 &&
+                            Boolean(onSelectionChange);
+                        const classStyle = route?.cableClass
+                            ? cableClassStyle(route.cableClass)
+                            : null;
+                        const content = (
+                            <>
+                                <span className="flex items-baseline gap-2">
+                                    <span className="font-mono font-semibold text-slate-200">
+                                        {terminalDisplayLabel(terminal)}
+                                    </span>
+                                    <span className="min-w-0 flex-1 text-slate-400">
+                                        {terminal.purpose || terminal.side}
+                                    </span>
+                                    {summary.status === 'internal' && (
+                                        <span className="shrink-0 text-[10px] text-slate-400">
+                                            Internal
+                                        </span>
+                                    )}
+                                    {summary.status === 'field' && (
+                                        <span
+                                            className="shrink-0 text-[10px]"
+                                            style={{ color: classStyle?.color }}
+                                        >
+                                            Field cable
+                                        </span>
+                                    )}
+                                </span>
+                                <span className="flex items-center gap-2">
+                                    <span
+                                        className={`min-w-0 flex-1 break-words ${connections.length ? 'text-slate-300' : 'text-slate-500'}`}
+                                    >
+                                        {summary.label}
+                                        {route?.gauge && ` · ${route.gauge}`}
+                                    </span>
+                                    {clickable && (
+                                        <ChevronRight className="size-3.5 shrink-0 text-slate-400" />
+                                    )}
+                                </span>
+                                {classStyle && (
+                                    <span className="text-[10px] text-slate-500">
+                                        {classStyle.label}
+                                        {route?.inheritedCableClass &&
+                                            ' · from bundle'}
+                                    </span>
+                                )}
+                            </>
+                        );
+
+                        return clickable ? (
+                            <button
+                                key={terminal.key}
+                                type="button"
+                                data-terminal-key={terminal.key}
+                                className="grid w-full gap-1 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-left text-xs transition-colors hover:border-blue-400/50 hover:bg-blue-400/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                onClick={() => {
+                                    if (summary.selection) {
+                                        onSelectionChange?.(summary.selection);
+                                    } else {
+                                        setPickerTerminal(terminal.key);
+                                    }
+                                }}
+                            >
+                                {content}
+                            </button>
+                        ) : (
+                            <div
+                                key={terminal.key}
+                                data-terminal-key={terminal.key}
+                                className="grid gap-1 rounded-md border border-white/5 bg-white/[0.025] px-2.5 py-2 text-xs"
+                            >
+                                {content}
+                            </div>
+                        );
+                    })}
                 </div>
             </details>
+            {onSelectionChange && (
+                <RoutePicker
+                    routes={pickerConnections}
+                    open={pickerTerminal !== null}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setPickerTerminal(null);
+                        }
+                    }}
+                    onSelect={onSelectionChange}
+                    title={`${pickerDefinition ? terminalDisplayLabel(pickerDefinition) : 'Terminal'} · ${pickerConnections.length} connections`}
+                    description="Choose the wire or field cable to inspect."
+                />
+            )}
             <Button
                 variant="outline"
                 size="sm"

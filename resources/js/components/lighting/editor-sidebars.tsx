@@ -23,10 +23,12 @@ import { WireProperties } from './wire-properties';
 export function EditorWorkspace({
     editor,
     layout,
+    wiring = false,
     children,
 }: {
     editor: LightingEditorController;
     layout: LightingLayout;
+    wiring?: boolean;
     children: ReactNode;
 }) {
     const rows = [...layout.rails].sort(
@@ -129,9 +131,13 @@ export function EditorWorkspace({
                         {component && definition && (
                             <>
                                 <DeviceProperties
+                                    key={component.portable_id}
                                     component={component}
                                     definition={definition}
                                     layout={layout}
+                                    onSelectionChange={
+                                        wiring ? editor.setSelection : undefined
+                                    }
                                     onUpdate={editor.updateComponent}
                                     onDuplicate={editor.duplicateSelection}
                                     onMove={editor.moveComponent}

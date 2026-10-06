@@ -13,6 +13,7 @@ export type PhysicalComponentNode = Node<
         definition: ComponentDefinition;
         warning: boolean;
         showLabels: boolean;
+        routeEndpoint?: boolean;
     },
     'component'
 >;
@@ -22,7 +23,7 @@ export default function ComponentNode({
     data,
     selected,
 }: NodeProps<PhysicalComponentNode>) {
-    const { component, definition, warning, showLabels } = data;
+    const { component, definition, warning, showLabels, routeEndpoint } = data;
     const updateNodeInternals = useUpdateNodeInternals();
     useEffect(() => {
         updateNodeInternals(id);
@@ -52,6 +53,7 @@ export default function ComponentNode({
             className={cn(
                 'relative h-full w-full border border-border bg-card shadow-sm',
                 selected && 'outline-3 outline-primary',
+                routeEndpoint && !selected && 'outline-2 outline-blue-300/60',
                 warning && 'border-destructive outline-3 outline-destructive',
             )}
             title={`${component.custom_label ?? definition.display_name} · ${definition.width_mm} × ${definition.height_mm} mm${warning ? ' · Outside usable enclosure area' : ''}`}

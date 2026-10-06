@@ -52,6 +52,7 @@ export type EditorToolbarProps = {
     onRetry: () => void;
     onCatalog: () => void;
     onExport: () => void;
+    onExportWiring: () => void;
     exporting: boolean;
 };
 
@@ -195,6 +196,12 @@ export function EditorToolbar(props: EditorToolbarProps) {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={props.onSummary}>
                                     <ListTree /> Design summary
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    disabled={props.exporting}
+                                    onClick={props.onExportWiring}
+                                >
+                                    <Download /> Export Wiring PDF
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                     disabled={props.exporting}

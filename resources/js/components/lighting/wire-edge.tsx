@@ -14,6 +14,7 @@ export type PhysicalWireEdge = Edge<
         gridSize: number;
         snap: boolean;
         showLabels: boolean;
+        dimmed: boolean;
         onRoute: (points: MmPoint[], commit: boolean) => void;
     },
     'wire'
@@ -30,7 +31,7 @@ export default function WireEdge({
         return null;
     }
 
-    const { connection, onRoute, gridSize, snap, showLabels } = data;
+    const { connection, onRoute, gridSize, snap, showLabels, dimmed } = data;
     const points = connection.route_points;
     const middle = points[Math.floor(points.length / 2)];
     const label = middle ? mmPointToCanvas(middle) : { x: 0, y: 0 };
@@ -43,12 +44,14 @@ export default function WireEdge({
                 id={id}
                 data-testid={`lighting-wire-${connection.portable_id}`}
                 path={orthogonalRoutePath(points)}
-                interactionWidth={20}
+                interactionWidth={20 / zoom}
+                vectorEffect="non-scaling-stroke"
                 style={{
                     stroke: selected
                         ? 'var(--primary)'
                         : (connection.color ?? '#64748b'),
                     strokeWidth: selected ? 5 : 3,
+                    opacity: dimmed ? 0.4 : 1,
                 }}
             />
             <title>{caption}</title>
@@ -70,6 +73,7 @@ export default function WireEdge({
                         style={{
                             transform: `translate(-50%, -150%) translate(${label.x}px, ${label.y}px)`,
                             fontSize: Math.max(11, 9 / zoom),
+                            opacity: dimmed ? 0.55 : 1,
                         }}
                     >
                         {connection.cable_type} · {length} m
