@@ -1,4 +1,10 @@
-import { ConnectionMode, ReactFlow, SelectionMode } from '@xyflow/react';
+import {
+    ConnectionMode,
+    ReactFlow,
+    SelectionMode,
+    useViewport,
+    ViewportPortal,
+} from '@xyflow/react';
 import type {
     Connection,
     EdgeChange,
@@ -6,9 +12,10 @@ import type {
     NodeChange,
     ReactFlowInstance,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DragEvent, MouseEvent } from 'react';
 import ComponentNode from './component-node';
+import { describeLightingRoute } from './connection-lookup';
 import DuctNode from './duct-node';
 import EnclosureNode from './enclosure-node';
 import { ExternalCablingLayer } from './external-cabling-layer';
@@ -22,8 +29,19 @@ import {
     outsideBounds,
     rerouteConnections,
     terminalPoint,
+    orthogonalRoutePath,
 } from './geometry';
 import RailNode from './rail-node';
+import {
+    buildWiringRoutes,
+    findRoutesNearPoint,
+    isRouteSelection,
+    routeSelectionKey,
+    screenToleranceMm,
+} from './route-hit-testing';
+import type { RouteSelection, WiringRoute } from './route-hit-testing';
+import { findRouteOverlaps } from './route-overlap';
+import { RoutePicker } from './route-picker';
 import type {
     LightingLayout,
     LightingSelection,
@@ -42,6 +60,172 @@ const nodeTypes = {
 };
 const edgeTypes = { wire: WireEdge };
 type PhysicalFlowInstance = ReactFlowInstance<Node, PhysicalWireEdge>;
+
+function RouteInspectionLayer({
+    routes,
+    selection,
+    layout,
+    onInspect,
+}: {
+    routes: WiringRoute[];
+    selection: LightingSelection;
+    layout: LightingLayout;
+    onInspect: (
+        selections: RouteSelection[],
+        position: { x: number; y: number },
+    ) => void;
+}) {
+    const { zoom } = useViewport();
+    const focused = routes.find(
+        (route) =>
+            route.selection.type === selection?.type &&
+            route.selection.id === selection?.id,
+    );
+    const overlaps = useMemo(() => findRouteOverlaps(routes), [routes]);
+    const displayedGroups = new Set<string>();
+    const badges = [...overlaps]
+        .sort(
+            (left, right) =>
+                Math.hypot(
+                    right.end.x_mm - right.start.x_mm,
+                    right.end.y_mm - right.start.y_mm,
+                ) -
+                Math.hypot(
+                    left.end.x_mm - left.start.x_mm,
+                    left.end.y_mm - left.start.y_mm,
+                ),
+        )
+        .filter((overlap) => {
+            const length = Math.hypot(
+                overlap.end.x_mm - overlap.start.x_mm,
+                overlap.end.y_mm - overlap.start.y_mm,
+            );
+            const group = overlap.selections.map(routeSelectionKey).join('|');
+
+            if (mmToCanvas(length) * zoom < 44 || displayedGroups.has(group)) {
+                return false;
+            }
+
+            displayedGroups.add(group);
+
+            return true;
+        });
+
+    return (
+        <ViewportPortal>
+            {focused && (
+                <svg
+                    className="pointer-events-none absolute top-0 left-0 overflow-visible"
+                    width={mmToCanvas(layout.design.width_mm)}
+                    height={mmToCanvas(layout.design.height_mm)}
+                    style={{ zIndex: 7 }}
+                    data-testid="lighting-route-focus"
+                    data-route-type={focused.selection.type}
+                    data-route-id={focused.selection.id}
+                    aria-hidden="true"
+                >
+                    {focused.paths.map((points, index) => (
+                        <g key={index}>
+                            <path
+                                d={orthogonalRoutePath(points)}
+                                fill="none"
+                                stroke="#191c22"
+                                strokeWidth={9}
+                                vectorEffect="non-scaling-stroke"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            <path
+                                d={orthogonalRoutePath(points)}
+                                fill="none"
+                                stroke="#60a5fa"
+                                strokeOpacity={0.25}
+                                strokeWidth={8}
+                                vectorEffect="non-scaling-stroke"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            <path
+                                d={orthogonalRoutePath(points)}
+                                fill="none"
+                                stroke="#bfdbfe"
+                                strokeWidth={3.5}
+                                vectorEffect="non-scaling-stroke"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </g>
+                    ))}
+                    {focused.paths.flatMap((points, index) =>
+                        points.length > 1
+                            ? [points[0], points.at(-1)!].map((point, end) => {
+                                  const canvas = mmPointToCanvas(point);
+
+                                  return (
+                                      <circle
+                                          key={`${index}:${end}`}
+                                          cx={canvas.x}
+                                          cy={canvas.y}
+                                          r={4 / zoom}
+                                          fill="#bfdbfe"
+                                          stroke="#191c22"
+                                          strokeWidth={2}
+                                          vectorEffect="non-scaling-stroke"
+                                      />
+                                  );
+                              })
+                            : [],
+                    )}
+                </svg>
+            )}
+            {badges.map((overlap) => {
+                const midpoint = {
+                    x_mm: (overlap.start.x_mm + overlap.end.x_mm) / 2,
+                    y_mm: (overlap.start.y_mm + overlap.end.y_mm) / 2,
+                };
+                const canvas = mmPointToCanvas(midpoint);
+                const candidates = findRoutesNearPoint(
+                    routes,
+                    midpoint,
+                    screenToleranceMm(8, zoom),
+                );
+
+                return (
+                    <button
+                        key={`${midpoint.x_mm}:${midpoint.y_mm}`}
+                        type="button"
+                        className="nodrag nopan absolute flex h-5 min-w-6 items-center justify-center rounded-md border border-blue-300/40 bg-[#24334a] px-1.5 text-[11px] font-semibold text-blue-100 shadow-sm hover:border-blue-200 hover:bg-[#30445f] focus-visible:outline-2 focus-visible:outline-blue-300"
+                        style={{
+                            left: canvas.x,
+                            top: canvas.y,
+                            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+                            zIndex: 9,
+                        }}
+                        data-route-inspection-control
+                        data-testid="lighting-route-overlap"
+                        data-route-count={overlap.selections.length}
+                        aria-label={`${overlap.selections.length} overlapping routes. Choose a cable`}
+                        title={`${overlap.selections.length} routes share this section`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            const box =
+                                event.currentTarget.getBoundingClientRect();
+                            onInspect(candidates, {
+                                x: box.right + 8,
+                                y: box.top,
+                            });
+                        }}
+                    >
+                        {overlap.selections.length}
+                    </button>
+                );
+            })}
+        </ViewportPortal>
+    );
+}
 
 export type PanelCanvasProps = {
     layout: LightingLayout;
@@ -98,7 +282,57 @@ export function PanelCanvas({
     layoutReadOnly = true,
 }: PanelCanvasProps) {
     const [instance, setInstance] = useState<PhysicalFlowInstance | null>(null);
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [canvasSelection, setCanvasSelection] = useState<{
+        primary: LightingSelection;
+        ids: string[];
+    }>({ primary: null, ids: [] });
+    const selectedIds = useMemo(
+        () =>
+            canvasSelection.primary === selection
+                ? canvasSelection.ids
+                : selection
+                  ? [`${selection.type}:${selection.id}`]
+                  : [],
+        [canvasSelection, selection],
+    );
+    const [picker, setPicker] = useState<{
+        selections: RouteSelection[];
+        position: { x: number; y: number };
+        additive: boolean;
+    } | null>(null);
+    const pointerStart = useRef<{ x: number; y: number } | null>(null);
+    const routes = useMemo(
+        () =>
+            buildWiringRoutes(layout, {
+                internal: showWires,
+                external: showExternalCabling,
+            }),
+        [layout, showWires, showExternalCabling],
+    );
+    const routeFocused = isRouteSelection(selection);
+    const endpointIds = useMemo(() => {
+        if (selection?.type === 'connection') {
+            const connection = layout.connections.find(
+                (item) => item.portable_id === selection.id,
+            );
+
+            return connection
+                ? [connection.source_portable_id, connection.target_portable_id]
+                : [];
+        }
+
+        if (selection?.type === 'external_cable') {
+            const cable = layout.external_cables.find(
+                (item) => item.portable_id === selection.id,
+            );
+
+            return cable?.internal_component_portable_id
+                ? [cable.internal_component_portable_id]
+                : [];
+        }
+
+        return [];
+    }, [layout, selection]);
     const selected = useCallback(
         (type: string, id: string) => {
             if (!selection) {
@@ -170,6 +404,9 @@ export function PanelCanvas({
                         definition,
                         showLabels,
                         warning: outsideBounds(bounds, layout.design),
+                        routeEndpoint: endpointIds.includes(
+                            component.portable_id,
+                        ),
                     },
                     zIndex: 1,
                 },
@@ -222,7 +459,7 @@ export function PanelCanvas({
         });
 
         return [enclosure, ...rails, ...ducts, ...devices];
-    }, [layout, selected, showGrid, showLabels]);
+    }, [layout, selected, showGrid, showLabels, endpointIds]);
 
     const edges = useMemo<PhysicalWireEdge[]>(
         () =>
@@ -241,6 +478,9 @@ export function PanelCanvas({
                     gridSize: layout.design.grid_size_mm,
                     snap: layout.design.snap_to_grid,
                     showLabels: showCableLabels,
+                    dimmed:
+                        routeFocused &&
+                        !selected('connection', connection.portable_id),
                     onRoute: (points, commit) =>
                         onChange(
                             {
@@ -260,7 +500,7 @@ export function PanelCanvas({
                         ),
                 },
             })),
-        [layout, onChange, selected, showCableLabels, showWires],
+        [layout, onChange, selected, showCableLabels, showWires, routeFocused],
     );
 
     const fit = useCallback(
@@ -330,9 +570,11 @@ export function PanelCanvas({
         }
 
         const identifiers = [...result];
-        setSelectedIds(identifiers);
         const primary = identifiers.at(-1);
-        onSelectionChange(primary ? selectionFromId(primary) : null);
+        publishCanvasSelection(
+            primary ? selectionFromId(primary) : null,
+            identifiers,
+        );
     }
 
     function moveNodes(dragged: Node[], commit: boolean) {
@@ -434,7 +676,7 @@ export function PanelCanvas({
             { ...layout, connections: [...layout.connections, wire] },
             true,
         );
-        onSelectionChange({ type: 'connection', id: wire.portable_id });
+        publishCanvasSelection({ type: 'connection', id: wire.portable_id });
     }
 
     function drop(event: DragEvent<HTMLDivElement>) {
@@ -464,10 +706,115 @@ export function PanelCanvas({
         );
     }
 
+    function publishCanvasSelection(
+        next: LightingSelection,
+        identifiers = next ? [`${next.type}:${next.id}`] : [],
+    ) {
+        setCanvasSelection({ primary: next, ids: identifiers });
+        onSelectionChange(next);
+    }
+
+    function selectRoute(next: LightingSelection) {
+        if (!isRouteSelection(next)) {
+            return;
+        }
+
+        const primaryId = selection
+            ? `${selection.type}:${selection.id}`
+            : null;
+        const activeIds =
+            primaryId && selectedIds.includes(primaryId)
+                ? selectedIds
+                : primaryId
+                  ? [primaryId]
+                  : [];
+        const identifiers = picker?.additive
+            ? [...new Set([...activeIds, routeSelectionKey(next)])]
+            : [routeSelectionKey(next)];
+        setPicker(null);
+        publishCanvasSelection(next, identifiers);
+        onSelectedObjectsChange?.(
+            identifiers.flatMap((id) => {
+                const object = selectionFromId(id);
+
+                return object ? [object] : [];
+            }),
+        );
+    }
+
+    function inspectRoutes(
+        candidates: RouteSelection[],
+        position: { x: number; y: number },
+        additive = false,
+    ) {
+        if (candidates.length === 1) {
+            selectRoute(candidates[0]);
+        } else if (candidates.length > 1) {
+            setPicker({ selections: candidates, position, additive });
+        }
+    }
+
+    function captureRouteClick(event: MouseEvent<HTMLDivElement>) {
+        const target = event.target;
+
+        if (
+            !instance ||
+            event.button !== 0 ||
+            !(target instanceof Element) ||
+            !event.currentTarget.contains(target) ||
+            target.closest(
+                '.react-flow__node, .react-flow__handle, [data-testid="wire-route-controls"], [data-route-interaction-control], [data-route-inspection-control], [role="dialog"]',
+            )
+        ) {
+            return;
+        }
+
+        if (
+            pointerStart.current &&
+            Math.hypot(
+                event.clientX - pointerStart.current.x,
+                event.clientY - pointerStart.current.y,
+            ) > 3
+        ) {
+            return;
+        }
+
+        const point = canvasPointToMm(
+            instance.screenToFlowPosition({
+                x: event.clientX,
+                y: event.clientY,
+            }),
+        );
+        const candidates = findRoutesNearPoint(
+            routes,
+            point,
+            screenToleranceMm(10, instance.getZoom()),
+        );
+
+        if (
+            candidates.length === 0 ||
+            (event.shiftKey && candidates.length === 1)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        inspectRoutes(
+            candidates,
+            { x: event.clientX, y: event.clientY },
+            event.shiftKey,
+        );
+    }
+
     return (
         <div
             className="relative h-full min-h-[400px] w-full bg-muted/40"
             data-testid="lighting-canvas"
+            onPointerDownCapture={(event) => {
+                pointerStart.current = { x: event.clientX, y: event.clientY };
+            }}
+            onClickCapture={captureRouteClick}
             onDrop={drop}
             onDragOver={(event) => {
                 event.preventDefault();
@@ -492,16 +839,30 @@ export function PanelCanvas({
                 onNodeDragStop={(_event, node, dragged) =>
                     moveNodes(dragged.length ? dragged : [node], true)
                 }
-                onNodeClick={(_event, node) =>
-                    onSelectionChange(selectionFromId(node.id))
-                }
-                onEdgeClick={(_event, edge) =>
-                    onSelectionChange(selectionFromId(edge.id))
-                }
+                onNodeClick={(event, node) => {
+                    if (!event.shiftKey) {
+                        publishCanvasSelection(
+                            selectionFromId(node.id),
+                            selectedIds.includes(node.id)
+                                ? selectedIds
+                                : [node.id],
+                        );
+                    }
+                }}
+                onEdgeClick={(event, edge) => {
+                    if (!event.shiftKey) {
+                        publishCanvasSelection(
+                            selectionFromId(edge.id),
+                            selectedIds.includes(edge.id)
+                                ? selectedIds
+                                : [edge.id],
+                        );
+                    }
+                }}
                 onSelectionChange={selectionChanged}
                 onPaneClick={() => {
-                    setSelectedIds([]);
-                    onSelectionChange(null);
+                    setPicker(null);
+                    publishCanvasSelection(null);
                     onSelectedObjectsChange?.([]);
                 }}
                 onConnect={connect}
@@ -525,12 +886,38 @@ export function PanelCanvas({
                 <ExternalCablingLayer
                     layout={layout}
                     selection={selection}
-                    onSelectionChange={onSelectionChange}
+                    onSelectionChange={publishCanvasSelection}
                     onChange={onChange}
                     visible={showExternalCabling}
                     showLabels={showCableLabels}
                 />
+                <RouteInspectionLayer
+                    routes={routes}
+                    selection={selection}
+                    layout={layout}
+                    onInspect={inspectRoutes}
+                />
             </ReactFlow>
+            <RoutePicker
+                open={picker !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setPicker(null);
+                    }
+                }}
+                routes={(picker?.selections ?? []).flatMap((candidate) => {
+                    const description = describeLightingRoute(
+                        layout,
+                        candidate,
+                    );
+
+                    return description ? [description] : [];
+                })}
+                title="Choose a route"
+                description="Several cables share this location. Select one to follow its complete route."
+                position={picker?.position}
+                onSelect={selectRoute}
+            />
             <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-24px)] rounded border bg-background/90 px-3 py-2 text-xs text-muted-foreground">
                 Connect terminals to add wiring · Scroll to zoom · Middle/right
                 drag to pan

@@ -22,6 +22,7 @@ import {
     reconcileRailAttachments,
     rerouteConnections,
 } from './geometry';
+import type { LightingInterchangeDocument } from './interchange';
 import {
     deleteLayoutObjects,
     duplicateLayoutObject,
@@ -974,6 +975,15 @@ export function useLightingEditor(designId: number) {
         setSelection(next);
         setSelectedObjects(next ? [next] : []);
 
+        if (next?.type === 'connection') {
+            setShowWires(true);
+        } else if (
+            next?.type === 'external_cable' ||
+            next?.type === 'cable_bundle'
+        ) {
+            setShowExternalCabling(true);
+        }
+
         const rowId =
             next?.type === 'rail'
                 ? next.id
@@ -1165,6 +1175,62 @@ export function useLightingEditor(designId: number) {
         }
     }
 
+    async function exportWiringPdf(): Promise<void> {
+        const current = layoutRef.current;
+
+        if (!current || exporting) {
+            return;
+        }
+
+        setExporting(true);
+        setOperationError(null);
+
+        try {
+            const {
+                design,
+                components,
+                rails,
+                ducts,
+                connections,
+                cable_entries,
+                cable_bundles,
+                external_cables,
+            } = structuredClone(layoutSnapshot(current));
+            const document = await lightingRequest<LightingInterchangeDocument>(
+                exportMethod.url(designId),
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        layout: {
+                            design,
+                            components,
+                            rails,
+                            ducts,
+                            connections,
+                            cable_entries,
+                            cable_bundles,
+                            external_cables,
+                        },
+                    }),
+                },
+            );
+            const { generateWiringPdf } = await import('./wiring-pdf');
+            const { blob, filename } = await generateWiringPdf(document);
+            const objectUrl = URL.createObjectURL(blob);
+            const link = window.document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        } catch (caught) {
+            setOperationError(
+                `Wiring PDF could not be exported: ${lightingErrorMessage(caught)}`,
+            );
+        } finally {
+            setExporting(false);
+        }
+    }
+
     function addRail() {
         addRow();
     }
@@ -1292,6 +1358,7 @@ export function useLightingEditor(designId: number) {
         moveRow,
         moveComponent,
         exportJson,
+        exportWiringPdf,
         exporting,
         reorderComponent,
         addRail,

@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { test as unmonitoredTest } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
+import { cableEntryPoint } from '../../../resources/js/components/lighting/external-cabling';
+import { terminalPoint } from '../../../resources/js/components/lighting/geometry';
 import type {
     CatalogSnapshot,
     LightingInterchangeDocument,
 } from '../../../resources/js/components/lighting/interchange';
+import { layoutSnapshot } from '../../../resources/js/components/lighting/layout-state';
 import type {
     ComponentDefinition,
     DesignRail,
@@ -345,6 +348,207 @@ async function createDesign(page: Page, name: string): Promise<number> {
     return designId;
 }
 
+async function createWiringFixture(page: Page, name: string) {
+    const designId = await createDesign(page, name);
+    const layout = await readLayout(page, designId);
+    const { definitions } = await api<{ definitions: ComponentDefinition[] }>(
+        page,
+        '/api/component-definitions',
+    );
+    const row = orderedRows(layout)[0];
+    const names = [
+        'Shelly Pro Dimmer 2PM',
+        'Generic 24V DIN power supply (sample)',
+        'Generic ESP32 / I/O controller (sample)',
+    ];
+    const labels = [
+        'Living room dimmer',
+        '24V power supply',
+        'Keypad controller',
+    ];
+    const placedDefinitions = names.map((name) => {
+        const definition = definitions.find(
+            (item) => item.display_name === name,
+        );
+        expect(definition, `fixture catalogue contains ${name}`).toBeDefined();
+
+        return definition!;
+    });
+    layout.definitions = placedDefinitions;
+    layout.components = placedDefinitions.map((definition, index) => ({
+        portable_id: randomUUID(),
+        component_definition_id: definition.id,
+        sort_order: index,
+        x_mm: row.x_mm + [20, 110, 220][index],
+        y_mm:
+            row.y_mm +
+            row.width_mm / 2 -
+            (definition.mounting_anchor_y_mm ?? definition.height_mm / 2),
+        rotation: 0,
+        custom_label: labels[index],
+        rail_portable_id:
+            definition.mounting_type === 'din-rail' ? row.portable_id : null,
+        notes: index === 0 ? 'Living and dining lighting circuits' : null,
+        metadata: {},
+    }));
+    const point = (x_mm: number, y_mm: number) => ({ x_mm, y_mm });
+    const endpoint = (index: number, terminal: string) =>
+        terminalPoint(
+            layout.components[index],
+            placedDefinitions[index],
+            terminal,
+        );
+    const through = (
+        source: { x_mm: number; y_mm: number },
+        target: { x_mm: number; y_mm: number },
+        y: number,
+    ) => [
+        source,
+        point(80, source.y_mm),
+        point(80, y),
+        point(250, y),
+        point(250, target.y_mm),
+        target,
+    ];
+    const wireEndpoints = [
+        {
+            source: 0,
+            sourceTerminal: 'N',
+            target: 1,
+            targetTerminal: 'N',
+            label: 'Neutral jumper',
+        },
+        {
+            source: 1,
+            sourceTerminal: '24V+',
+            target: 2,
+            targetTerminal: '24V+',
+            label: 'Controller supply',
+        },
+        {
+            source: 2,
+            sourceTerminal: 'GPIO01',
+            target: 0,
+            targetTerminal: 'SW1',
+            label: 'Keypad control',
+        },
+    ];
+    layout.connections = wireEndpoints.map((wire, index) => ({
+        portable_id: randomUUID(),
+        source_portable_id: layout.components[wire.source].portable_id,
+        source_terminal: wire.sourceTerminal,
+        target_portable_id: layout.components[wire.target].portable_id,
+        target_terminal: wire.targetTerminal,
+        cable_type: wire.label,
+        color: '#60a5fa',
+        gauge: '18 AWG',
+        conductor_count: 1,
+        route_points: through(
+            endpoint(wire.source, wire.sourceTerminal),
+            endpoint(wire.target, wire.targetTerminal),
+            185 + 25 * index,
+        ),
+        actual_length_mm: null,
+        notes: wire.label,
+    }));
+    const entry = {
+        portable_id: randomUUID(),
+        label: 'Bottom lighting entry',
+        side: 'bottom' as const,
+        offset_mm: 60,
+        span_mm: 20,
+        entry_type: 'conduit' as const,
+        notes: 'Lighting field cables',
+        metadata: {},
+    };
+    const origin = cableEntryPoint(entry, layout.design);
+    const bundle = {
+        portable_id: randomUUID(),
+        cable_entry_portable_id: entry.portable_id,
+        name: 'Lighting circuits',
+        external_location: 'Living and dining rooms',
+        cable_class: 'line_voltage' as const,
+        direction: 'mixed' as const,
+        display_color: null,
+        planned_count: 4,
+        route_points: [origin, point(origin.x_mm, 185), point(80, 185)],
+        notes: 'One planned run remains undefined',
+        metadata: {},
+    };
+    layout.cable_entries = [entry];
+    layout.cable_bundles = [bundle];
+    layout.external_cables = [
+        'Living ceiling',
+        'AC Feed Neutral',
+        'Main bedroom – left keypad (unassigned)',
+    ].map((label, index) => {
+        const terminal = index === 0 ? 'O1' : 'N';
+        const target = endpoint(0, terminal);
+
+        return {
+            portable_id: randomUUID(),
+            bundle_portable_id: bundle.portable_id,
+            cable_entry_portable_id: null,
+            label,
+            cable_type: '14/3 field cable',
+            gauge: '14 AWG',
+            conductor_count: 3,
+            internal_component_portable_id:
+                index < 2 ? layout.components[0].portable_id : null,
+            internal_terminal: index < 2 ? terminal : null,
+            branch_route_points:
+                index < 2
+                    ? [
+                          point(80, 185),
+                          point(250, 185),
+                          point(250, target.y_mm),
+                          target,
+                      ]
+                    : [],
+            cable_class: null,
+            direction: null,
+            notes: index === 2 ? 'Assign after room schedule review' : label,
+            metadata: {},
+        };
+    });
+    await api(page, `/api/designs/${designId}/layout`, 'PUT', {
+        ...layoutSnapshot(layout),
+        base_version: layout.design.save_version,
+        mutation_id: randomUUID(),
+    });
+    await page.reload();
+    await expect(page.getByTestId('lighting-canvas')).toBeVisible();
+
+    return { designId, layout };
+}
+
+async function enterWiringView(page: Page) {
+    await page.getByRole('button', { name: 'Panel menu', exact: true }).click();
+    await page
+        .getByRole('menuitem', { name: 'Wiring view', exact: true })
+        .click();
+    await expect(page.locator('.react-flow__viewport')).toBeVisible();
+}
+
+async function clickWiringPoint(page: Page, x: number, y: number) {
+    const position = await page.locator('.react-flow').evaluate(
+        (element, point) => {
+            const bounds = element.getBoundingClientRect();
+            const viewport = element.querySelector('.react-flow__viewport')!;
+            const transform = new DOMMatrix(
+                getComputedStyle(viewport).transform,
+            );
+
+            return {
+                x: bounds.left + transform.e + point.x * 4 * transform.a,
+                y: bounds.top + transform.f + point.y * 4 * transform.d,
+            };
+        },
+        { x, y },
+    );
+    await page.mouse.click(position.x, position.y);
+}
+
 function inspector(page: Page): Locator {
     return page.getByRole('complementary', { name: 'Properties inspector' });
 }
@@ -576,6 +780,7 @@ async function placeComponent(
     await drawer.getByLabel('Search components', { exact: true }).fill(name);
     await drawer
         .getByRole('button', { name: `Add ${name}`, exact: true })
+        .first()
         .click();
 
     if (await drawer.isVisible()) {
@@ -2249,6 +2454,258 @@ unmonitoredTest(
         } finally {
             if (intercepting) {
                 await page.unroute('**/api/designs/*/layout');
+            }
+
+            await cleanupDesigns(page, name);
+        }
+    },
+);
+
+test('navigates connected terminals and chooses among internal and field connections', async ({
+    context,
+    page,
+}) => {
+    test.setTimeout(60_000);
+    const name = `Lighting E2E terminal navigation ${randomUUID()}`;
+    await openLighting(context, page);
+
+    try {
+        const { layout } = await createWiringFixture(page, name);
+        await test.info().attach('wiring-visual-layout', {
+            body: JSON.stringify(layoutSnapshot(layout)),
+            contentType: 'application/json',
+        });
+        await writeFile(
+            test.info().outputPath('wiring-visual-layout.json'),
+            JSON.stringify(layoutSnapshot(layout)),
+        );
+        await enterWiringView(page);
+        const device = layout.components[0].portable_id;
+        await componentNode(page, device).click();
+        const spare = inspector(page).locator('[data-terminal-key="SW2"]');
+        await expect(spare).toContainText('Not connected');
+        await expect(spare).not.toHaveRole('button');
+        await inspector(page).locator('button[data-terminal-key="O1"]').click();
+        await expect(
+            inspector(page).getByLabel('Cable label', { exact: true }),
+        ).toHaveValue('Living ceiling');
+        await expect(page.getByTestId('lighting-route-focus')).toHaveAttribute(
+            'data-route-id',
+            layout.external_cables[0].portable_id,
+        );
+        await expect(
+            page.getByTestId('lighting-route-focus').locator('g'),
+        ).toHaveCount(2);
+
+        await componentNode(page, device).click();
+        const neutralTerminal = inspector(page).locator(
+            'button[data-terminal-key="N"]',
+        );
+        await neutralTerminal.focus();
+        await neutralTerminal.press('Enter');
+        const chooser = page.getByRole('dialog', { name: /2 connections/ });
+        await expect(chooser.locator('[data-route-id]')).toHaveCount(2);
+        await page.keyboard.press('Escape');
+        await expect(chooser).toBeHidden();
+        await expect(neutralTerminal).toBeFocused();
+        await neutralTerminal.press('Enter');
+        await chooser
+            .locator(`[data-route-id="${layout.connections[0].portable_id}"]`)
+            .click();
+        await expect(chooser).toBeHidden();
+        await expect(
+            inspector(page).getByLabel('Cable type', { exact: true }),
+        ).toHaveValue('Neutral jumper');
+        await expect(page.getByTestId('lighting-route-focus')).toHaveAttribute(
+            'data-route-id',
+            layout.connections[0].portable_id,
+        );
+        await componentNode(page, device).click({ modifiers: ['Shift'] });
+        await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);
+        await expect(page.locator('.react-flow__edge.selected')).toHaveCount(1);
+        await inspector(page).locator('button[data-terminal-key="N"]').click();
+        await chooser
+            .locator(`[data-route-id="${layout.connections[0].portable_id}"]`)
+            .click();
+        await expect(page.locator('.react-flow__node.selected')).toHaveCount(0);
+        await expect(page.locator('.react-flow__edge.selected')).toHaveCount(1);
+    } finally {
+        await cleanupDesigns(page, name);
+    }
+});
+
+test('selects every route at an overlap and exposes bundle member cables', async ({
+    context,
+    page,
+}) => {
+    test.setTimeout(60_000);
+    const name = `Lighting E2E overlapping routes ${randomUUID()}`;
+    await openLighting(context, page);
+
+    try {
+        const { layout } = await createWiringFixture(page, name);
+        await enterWiringView(page);
+        const overlapBadge = page
+            .locator(
+                '[data-testid="lighting-route-overlap"][data-route-count="3"]',
+            )
+            .first();
+        await expect(overlapBadge).toBeVisible();
+        await overlapBadge.focus();
+        await overlapBadge.press('Enter');
+        await expect(
+            page.getByRole('dialog', { name: 'Choose a route' }),
+        ).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(overlapBadge).toBeFocused();
+        const candidates = [
+            layout.connections[0].portable_id,
+            ...layout.external_cables
+                .slice(0, 2)
+                .map((cable) => cable.portable_id),
+        ];
+
+        for (const id of candidates) {
+            await clickWiringPoint(page, 180, 185);
+            const chooser = page.getByRole('dialog', {
+                name: 'Choose a route',
+            });
+            await expect(chooser.locator('[data-route-id]')).toHaveCount(3);
+
+            for (const candidate of candidates) {
+                await expect(
+                    chooser.locator(`[data-route-id="${candidate}"]`),
+                ).toBeVisible();
+            }
+
+            await chooser
+                .locator('[data-route-id]')
+                .last()
+                .scrollIntoViewIfNeeded();
+            await expect(
+                chooser.getByRole('heading', { name: 'Choose a route' }),
+            ).toBeInViewport();
+
+            await chooser.locator(`[data-route-id="${id}"]`).click();
+            await expect(chooser).toBeHidden();
+            await expect(
+                page.getByTestId('lighting-route-focus'),
+            ).toHaveAttribute('data-route-id', id);
+            await expect(inspector(page)).toBeVisible();
+        }
+
+        await clickWiringPoint(page, 70, 275);
+        const trunkChooser = page.getByRole('dialog', {
+            name: 'Choose a route',
+        });
+        await expect(trunkChooser.locator('[data-route-id]')).toHaveCount(4);
+        await trunkChooser
+            .locator(
+                `[data-route-id="${layout.external_cables[2].portable_id}"]`,
+            )
+            .click();
+        await expect(
+            inspector(page).getByLabel('Cable label', { exact: true }),
+        ).toHaveValue('Main bedroom – left keypad (unassigned)');
+        await expect(page.getByTestId('lighting-route-focus')).toHaveAttribute(
+            'data-route-id',
+            layout.external_cables[2].portable_id,
+        );
+    } finally {
+        await cleanupDesigns(page, name);
+    }
+});
+
+unmonitoredTest(
+    'downloads a vector wiring PDF from unsaved edits and reports preparation failures',
+    async ({ context, page }) => {
+        unmonitoredTest.setTimeout(60_000);
+        const name = `Lighting E2E wiring PDF ${randomUUID()}`;
+        await openLighting(context, page);
+        let designId = 0;
+
+        try {
+            const fixture = await createWiringFixture(page, name);
+            designId = fixture.designId;
+            await componentNode(
+                page,
+                fixture.layout.components[0].portable_id,
+            ).click();
+            await page.route(`**/api/designs/${designId}/layout`, (route) =>
+                route.fulfill({
+                    status: 503,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ message: 'Simulated save failure' }),
+                }),
+            );
+            await inspector(page)
+                .getByLabel('Custom label')
+                .fill('Unsaved café lighting dimmer');
+            await expect(page.getByRole('status')).toContainText('Save failed');
+            const request = page.waitForRequest((request) =>
+                request.url().endsWith(`/api/designs/${designId}/export`),
+            );
+            const downloading = page.waitForEvent('download');
+            await page
+                .getByRole('button', { name: 'Panel menu', exact: true })
+                .click();
+            await page
+                .getByRole('menuitem', {
+                    name: 'Export Wiring PDF',
+                    exact: true,
+                })
+                .click();
+            const exportRequest = await request;
+            expect(
+                exportRequest.postDataJSON().layout.components[0].custom_label,
+            ).toBe('Unsaved café lighting dimmer');
+            const download = await downloading;
+            expect(download.suggestedFilename()).toMatch(/-wiring\.pdf$/);
+            await download.saveAs(
+                unmonitoredTest.info().outputPath('current-state-wiring.pdf'),
+            );
+            const path = await download.path();
+            expect(path).not.toBeNull();
+            const bytes = await readFile(path!);
+            expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+            expect(bytes.length).toBeGreaterThan(10_000);
+            expect(
+                (await readLayout(page, designId)).components[0].custom_label,
+            ).toBe('Living room dimmer');
+
+            await page.route(`**/api/designs/${designId}/export`, (route) =>
+                route.fulfill({
+                    status: 422,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        message: 'Invalid current wiring snapshot',
+                    }),
+                }),
+            );
+            await page
+                .getByRole('button', { name: 'Panel menu', exact: true })
+                .click();
+            await page
+                .getByRole('menuitem', {
+                    name: 'Export Wiring PDF',
+                    exact: true,
+                })
+                .click();
+            await expect(
+                page
+                    .getByRole('alert')
+                    .filter({ hasText: 'Wiring PDF could not be exported' }),
+            ).toContainText('Invalid current wiring snapshot');
+            await page.unroute(`**/api/designs/${designId}/export`);
+            await page.unroute(`**/api/designs/${designId}/layout`);
+            await page
+                .getByRole('button', { name: 'Retry', exact: true })
+                .click();
+            await expect(page.getByRole('status')).toContainText('Saved');
+        } finally {
+            if (designId) {
+                await page.unroute(`**/api/designs/${designId}/export`);
+                await page.unroute(`**/api/designs/${designId}/layout`);
             }
 
             await cleanupDesigns(page, name);

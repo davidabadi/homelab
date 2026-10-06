@@ -15,6 +15,7 @@ import {
     updateRouteEndpoints,
 } from './geometry';
 import { RouteControls } from './route-controls';
+import { isRouteSelection } from './route-hit-testing';
 import type {
     CableBundle,
     CableEntry,
@@ -42,6 +43,7 @@ export function ExternalCablingLayer({
 }: CablingLayerProps) {
     const { screenToFlowPosition } = useReactFlow();
     const { zoom } = useViewport();
+    const focused = isRouteSelection(selection);
 
     function drag(
         event: ReactPointerEvent<SVGElement>,
@@ -179,6 +181,7 @@ export function ExternalCablingLayer({
                             <g
                                 key={bundle.portable_id}
                                 className="nodrag nopan"
+                                data-route-hit-target
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     onSelectionChange({
@@ -217,6 +220,7 @@ export function ExternalCablingLayer({
                                     vectorEffect="non-scaling-stroke"
                                     strokeLinejoin="round"
                                     strokeLinecap="round"
+                                    opacity={focused && !selected ? 0.4 : 1}
                                     style={{
                                         pointerEvents: 'stroke',
                                         cursor: 'pointer',
@@ -249,6 +253,7 @@ export function ExternalCablingLayer({
                             <g
                                 key={cable.portable_id}
                                 className="nodrag nopan"
+                                data-route-hit-target
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     onSelectionChange({
@@ -287,7 +292,9 @@ export function ExternalCablingLayer({
                                     vectorEffect="non-scaling-stroke"
                                     strokeLinejoin="round"
                                     strokeLinecap="round"
-                                    opacity={selected ? 1 : 0.75}
+                                    opacity={
+                                        selected ? 1 : focused ? 0.35 : 0.75
+                                    }
                                     style={{
                                         pointerEvents: 'stroke',
                                         cursor: 'pointer',
@@ -337,6 +344,7 @@ export function ExternalCablingLayer({
                                         role="button"
                                         aria-label={`Move ${bundle.name} breakout`}
                                         data-testid={`lighting-bundle-breakout-${bundle.portable_id}`}
+                                        data-route-interaction-control
                                         onPointerDown={(event) => {
                                             onSelectionChange({
                                                 type: 'cable_bundle',
@@ -521,6 +529,7 @@ export function ExternalCablingLayer({
                             data-x-mm={point.x_mm}
                             data-y-mm={point.y_mm}
                             onPointerDown={(event) => dragEntry(event, entry)}
+                            data-route-interaction-control
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onSelectionChange({
@@ -571,6 +580,7 @@ export function ExternalCablingLayer({
                         <button
                             key={bundle.portable_id}
                             type="button"
+                            data-route-interaction-control
                             className="nodrag nopan pointer-events-auto absolute flex items-center gap-2 rounded-md border border-white/15 bg-[#202631]/95 px-3 py-2 text-left text-slate-200 shadow-lg"
                             style={{
                                 left: point.x + 12 / zoom,

@@ -63,6 +63,8 @@
         "concurrently": "^10.0.5",
         "globals": "^17.11.0",
         "input-otp": "^1.4.2",
+        "jspdf": "^4.2.1",
+        "jspdf-autotable": "^5.0.8",
         "laravel-vite-plugin": "^3.0.0",
         "lucide-react": "^1.33.0",
         "react": "^19.2.0",
